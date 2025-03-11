@@ -75,6 +75,29 @@ function approximateLevenshtein(str1, str2) {
     ))
   `;
 }
+/**
+ * Extracts the first and last names from a full name string, 
+ * handling cases where the name might have only one part.
+ *
+ * @param {string} fullName - The full name string.
+ * @returns {object} - An object containing the 'first_name' and 'last_name'.
+ */
+function extractFirstLastName(fullName) {
+  return {
+    first_name: `
+      CASE
+        WHEN ARRAY_LENGTH(SPLIT(${fullName}, ' ')) > 1 THEN SPLIT(${fullName}, ' ')[SAFE_OFFSET(0)]
+        ELSE NULL
+      END
+    `,
+    last_name: `
+      CASE
+        WHEN ARRAY_LENGTH(SPLIT(${fullName}, ' ')) > 1 THEN SPLIT(${fullName}, ' ')[SAFE_OFFSET(1)]
+        ELSE ${fullName}
+      END
+    `
+  };
+}
 
 // Export the functions
 module.exports = {
@@ -84,4 +107,5 @@ module.exports = {
   zipStreet5,
   last3SoundexFirstCity,
   approximateLevenshtein,
+  extractFirstLastName
 };
