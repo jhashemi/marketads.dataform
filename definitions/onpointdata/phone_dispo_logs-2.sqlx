@@ -1,0 +1,38 @@
+config {
+    type: 'table',
+    bigquery: {
+        partitionBy: 'TIMESTAMP_TRUNC(THROWTIME,DAY)',
+        clusterBy: ['PHONENUMBER','hem_lc_md5', 'CONTACTEMAIL', 'DISPOSITIONTEXT']
+    }
+}
+SELECT  id,REGEXP_REPLACE(PHONENUMBER,r"(\+1|)(\d{10})",r"\2") as PHONENUMBER,
+ROW_NUMBER() OVER(PARTITION BY PHONENUMBER order by THROWTIME asc) as CONTACT_RETRY_ATTEMPT_NUMBER,
+EXTRACT(DATE from safe_cast(THROWTIME as datetime)) as THROWTIME_DATE,
+EXTRACT(DAY FROM EXTRACT(DATE from safe_cast(THROWTIME as datetime))) as THROWTIME_DATE_DAY,
+EXTRACT(DAYOFWEEK FROM EXTRACT(DATE from safe_cast(THROWTIME as datetime))) as THROWTIME_DATE_DAYOFWEEK,
+EXTRACT(HOUR FROM EXTRACT(TIME from safe_cast(THROWTIME as datetime))) as THROWTIME_TIME_HOUR,
+EXTRACT(TIME from safe_cast(THROWTIME as datetime)) as THROWTIME_TIME,
+EXTRACT(MINUTE FROM EXTRACT(TIME from safe_cast(THROWTIME as datetime))) as THROWTIME_TIME_MIN,
+NULLIF(TRIM(PHONENUMBEREXT),'') as PHONENUMBEREXT,
+upper(NULLIF(TRIM(CONTACTFIRSTNAME),'')) as CONTACTFIRSTNAME,
+upper(NULLIF(TRIM(CONTACTLASTNAME),'')) as CONTACTLASTNAME,
+NULLIF(TRIM(contactemail),'') as CONTACTEMAIL,
+concat(REGEXP_REPLACE(PHONENUMBER,r"(\+1|)(\d{10})",r"\2"),upper(NULLIF(TRIM(CONTACTLASTNAME),'')),upper(NULLIF(TRIM(CONTACTFIRSTNAME),''))) as PERSONHASH,
+to_hex(md5(lower(NULLIF(TRIM(contactemail),'')))) as hem_lc_md5,
+to_hex(sha1(lower(NULLIF(TRIM(contactemail),'')))) as hem_lc_sha1,
+to_hex(sha256(lower(NULLIF(TRIM(contactemail),'')))) as hem_lc_sha256,
+ upper(NULLIF(TRIM(CONTACTJOBTITLE),'')) as CONTACTJOBTITLE
+,upper(NULLIF(TRIM(COMPANYNAME),'')) as COMPANYNAME,
+trustfinancial.normalize_biz_name(upper(NULLIF(TRIM(COMPANYNAME),''))) as COMPANYNAME_NORMALIZED,
+DISPOSITIONTEXT,
+safe_cast(THROWTIME as timestamp) as THROWTIME,
+safe.PARSE_DATETIME('%Y_%m',safe_cast(YYYY_MM as string)) as YYYY_MM,
+ROW_CREATED_AT,
+ case when (dispositiontext in ('Not Available','Do Not Call','No Answer','Voicemail','(none)','Auto Pilot','VM Dropped-Active','Fax Tone')) then 'SYSTEM_NO_ANSWER' 
+when(dispositiontext in ('Direct Number','Transfer','No Interest','Interest','Interest, Send Information','Meeting Scheduled')) then 'SUCCESS_ANSWER' 
+when (dispositiontext in ('Gatekeeper Block - Rem','Referral','Personleft- Rem','Target in Different Location')) then '3RDPARTY_ANSWER' 
+when (dispositiontext in ('Incomplete Record','Research Error.')) then 'DATAERROR_ANSWER'
+when (dispositiontext in ('Bad Number','Wrong Number-Rem','Incorrect Contact, No Referral','Personleft- Rem')) then 'WRONG_NUMBER'
+when (dispositiontext in ('Do Not Call')) then 'DNC' 
+end as disposition
+FROM ${ref("phone_dispo_logs")}

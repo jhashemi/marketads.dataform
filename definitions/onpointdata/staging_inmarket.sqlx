@@ -1,0 +1,23 @@
+config {
+    type: 'table',
+    bigquery: {
+        partitionBy: 'dt',
+        clusterBy: ['dt','sha256_lc_hem', 'up_id', 'category']
+    },
+    columns: {
+      dt: "Date of intent detection",
+      sha256_lc_hem: "Lowercase SHA256 hashed e-mail address",
+      up_id: "Universal Person ID",
+      intent_strength: "The confidence threshold of the classification",
+      parent: "Taxonomy Parent",
+      category: "Taxonomy Parent Category (Intent)",
+      subcategory: "Taxonomy Category Sub-Category",
+      topic: "Taxonomy Subcategory Topic (Intent)",
+    }
+}
+select
+  PARSE_DATE('%Y%m%d',i.dt) as dt,sha256_lc_hem,up_id,intent_strength,b.parent,b.category,b.subcategory,b.topic
+from ${ref('staging_inmarket_raw')} i inner join ${ref('inmarket_taxonomy_1_3')} b on i.intent=b.topic_id
+
+union distinct
+select dt,sha256_lc_hem,up_id,intent_strength,parent,category,subcategory,topic from ${self()}

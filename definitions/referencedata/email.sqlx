@@ -1,0 +1,8 @@
+config {
+    type: 'table',
+    bigquery: {
+        partitionBy: 'RANGE_BUCKET(email_id,GENERATE_ARRAY(1,4000,1))',
+        clusterBy: ['email','host', 'domain', 'net']
+    }
+}
+SELECT 1

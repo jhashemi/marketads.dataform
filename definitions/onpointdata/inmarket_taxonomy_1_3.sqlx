@@ -1,0 +1,5 @@
+config { 
+    type: "declaration",
+    schema: "onpointdata",
+    name: "inmarket_taxonomy_1_3" 
+  }
