@@ -1,0 +1,8 @@
+{
+  "defaultSchema": "onpointdata",
+  "warehouse": "bigquery",
+  "assertionSchema": "dataform_assertions",
+  "defaultDatabase": "local-dimension-296708",
+  "defaultLocation": "US"
+}
+    

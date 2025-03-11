@@ -1,0 +1,8 @@
+{
+  "name": "syntaxdata",
+  "dependencies": {
+    "@dataform/core": "2.9.0",
+    "@dataform/cli": "^2.9.0"
+
+  }
+}
