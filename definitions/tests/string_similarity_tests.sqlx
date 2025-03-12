@@ -1,0 +1,85 @@
+config {
+  type: "operations",
+  description: "Test suite for string similarity functions in BigQuery",
+  tags: ["test", "string_similarity"]
+}
+
+-- Create temporary tables for test cases
+CREATE TEMP TABLE string_similarity_test_cases AS (
+  SELECT * FROM UNNEST([
+    STRUCT("John" AS string1, "Johnny" AS string2, 0.8 AS expected_levenshtein_similarity, 0.85 AS expected_jaro_winkler_similarity),
+    STRUCT("Smith" AS string1, "Smyth" AS string2, 0.8 AS expected_levenshtein_similarity, 0.9 AS expected_jaro_winkler_similarity),
+    STRUCT("Robert" AS string1, "Bob" AS string2, 0.5 AS expected_levenshtein_similarity, 0.6 AS expected_jaro_winkler_similarity),
+    STRUCT("123 Main St" AS string1, "123 Main Street" AS string2, 0.75 AS expected_levenshtein_similarity, 0.9 AS expected_jaro_winkler_similarity),
+    STRUCT("New York" AS string1, "New York City" AS string2, 0.7 AS expected_levenshtein_similarity, 0.8 AS expected_jaro_winkler_similarity),
+    STRUCT("Jane Doe" AS string1, "Jane A Doe" AS string2, 0.85 AS expected_levenshtein_similarity, 0.9 AS expected_jaro_winkler_similarity)
+  ])
+);
+
+-- Import similarity functions from modules
+${util.sql.similarity_functions.levenshteinSimilaritySql("string1", "string2")}
+${util.sql.similarity_functions.jaroWinklerSimilaritySql("string1", "string2")}
+
+-- Execute tests for Levenshtein similarity
+CREATE TEMP TABLE levenshtein_test_results AS (
+  SELECT
+    string1,
+    string2,
+    expected_levenshtein_similarity,
+    CAST(${util.sql.similarity_functions.levenshteinSimilaritySql("string1", "string2")} AS FLOAT64) AS actual_levenshtein_similarity,
+    ABS(expected_levenshtein_similarity - CAST(${util.sql.similarity_functions.levenshteinSimilaritySql("string1", "string2")} AS FLOAT64)) <= 0.1 AS passed
+  FROM string_similarity_test_cases
+);
+
+-- Execute tests for Jaro-Winkler similarity
+CREATE TEMP TABLE jaro_winkler_test_results AS (
+  SELECT
+    string1,
+    string2,
+    expected_jaro_winkler_similarity,
+    CAST(${util.sql.similarity_functions.jaroWinklerSimilaritySql("string1", "string2")} AS FLOAT64) AS actual_jaro_winkler_similarity,
+    ABS(expected_jaro_winkler_similarity - CAST(${util.sql.similarity_functions.jaroWinklerSimilaritySql("string1", "string2")} AS FLOAT64)) <= 0.1 AS passed
+  FROM string_similarity_test_cases
+);
+
+-- Report Levenshtein test results
+SELECT
+  'Levenshtein Similarity' AS test_name,
+  string1,
+  string2,
+  expected_levenshtein_similarity,
+  actual_levenshtein_similarity,
+  passed,
+  CASE 
+    WHEN passed THEN 'PASS'
+    ELSE 'FAIL - Expected ' || CAST(expected_levenshtein_similarity AS STRING) || ', got ' || CAST(actual_levenshtein_similarity AS STRING)
+  END AS result
+FROM levenshtein_test_results
+ORDER BY passed, string1, string2;
+
+-- Report Jaro-Winkler test results
+SELECT
+  'Jaro-Winkler Similarity' AS test_name,
+  string1,
+  string2,
+  expected_jaro_winkler_similarity,
+  actual_jaro_winkler_similarity,
+  passed,
+  CASE 
+    WHEN passed THEN 'PASS'
+    ELSE 'FAIL - Expected ' || CAST(expected_jaro_winkler_similarity AS STRING) || ', got ' || CAST(actual_jaro_winkler_similarity AS STRING)
+  END AS result
+FROM jaro_winkler_test_results
+ORDER BY passed, string1, string2;
+
+-- Summary of test results
+SELECT
+  'String Similarity Tests Summary' AS test_suite,
+  COUNT(*) AS total_tests,
+  COUNTIF(passed) AS passed_tests,
+  ROUND(COUNTIF(passed) / COUNT(*) * 100, 2) AS pass_rate
+FROM (
+  SELECT passed FROM levenshtein_test_results
+  UNION ALL
+  SELECT passed FROM jaro_winkler_test_results
+); 

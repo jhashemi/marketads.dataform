@@ -1,0 +1,64 @@
+config {
+  type: "table",
+  description: "Table with blocking keys and original columns, clustered for efficient matching",
+  schema: "onpointdata",
+  name: "tmp_andrew_table_with_blocking_keys",
+  dependencies: ["sources/onpointdata/tmp_andrew_table"],
+  bigquery: {
+    clusterBy: ["zip_last3", "zip_soundex_lastname", "state_last3_first3"]
+  }
+}
+
+-- Import the blocking functions
+const blockingFunctions = require("includes/blocking_functions");
+const semanticTypes = require("includes/semantic_types");
+
+-- Auto-detect field mappings
+const sourceSchema = [
+  { name: "FirstNameLastName", type: "STRING" },
+  { name: "Residence_Addresses_AddressLine", type: "STRING" },
+  { name: "Residence_Addresses_City", type: "STRING" },
+  { name: "Residence_Addresses_State", type: "STRING" },
+  { name: "Residence_Addresses_Zip", type: "STRING" },
+  { name: "Residence_Addresses_StreetName", type: "STRING" }
+];
+
+-- Map fields to semantic types
+const fieldMappings = {
+  fullName: "FirstNameLastName",
+  address: "Residence_Addresses_AddressLine",
+  city: "Residence_Addresses_City",
+  state: "Residence_Addresses_State",
+  zipCode: "Residence_Addresses_Zip",
+  streetName: "Residence_Addresses_StreetName"
+};
+
+-- Extract first and last name from full name
+const firstNameField = "SPLIT(FirstNameLastName, ' ')[SAFE_OFFSET(0)]";
+const lastNameField = "SPLIT(FirstNameLastName, ' ')[SAFE_OFFSET(1)]";
+
+SELECT
+  -- Original fields
+  FirstNameLastName,
+  Residence_Addresses_AddressLine,
+  Residence_Addresses_City,
+  Residence_Addresses_State,
+  Residence_Addresses_Zip,
+  Residence_Addresses_StreetName,
+  
+  -- Standardized fields for matching
+  ${semanticTypes.standardizeSql(firstNameField, "firstName")} AS standardized_first_name,
+  ${semanticTypes.standardizeSql(lastNameField, "lastName")} AS standardized_last_name,
+  ${semanticTypes.standardizeSql("Residence_Addresses_City", "city")} AS standardized_city,
+  ${semanticTypes.standardizeSql("Residence_Addresses_State", "state")} AS standardized_state,
+  ${semanticTypes.standardizeSql("Residence_Addresses_Zip", "zipCode")} AS standardized_zip,
+  ${semanticTypes.standardizeSql("Residence_Addresses_StreetName", "address")} AS standardized_street,
+  
+  -- Blocking keys
+  ${blockingFunctions.zipLast3("Residence_Addresses_Zip", lastNameField)} AS zip_last3,
+  ${blockingFunctions.zipSoundexLastName("Residence_Addresses_Zip", lastNameField)} AS zip_soundex_lastname,
+  ${blockingFunctions.stateLast3First3("Residence_Addresses_State", lastNameField, firstNameField)} AS state_last3_first3,
+  ${blockingFunctions.zipStreet5("Residence_Addresses_Zip", "Residence_Addresses_StreetName")} AS zip_street5,
+  ${blockingFunctions.last3SoundexFirstCity(lastNameField, firstNameField, "Residence_Addresses_City")} AS last3_soundexfirst_city
+
+FROM ${ref("sources/onpointdata/tmp_andrew_table")} 

@@ -1,0 +1,45 @@
+config {
+  type: "incremental",
+  description: "Incremental customer record matching for large datasets",
+  bigquery: {
+    partitionBy: "processed_time",
+    clusterBy: ["confidence_tier"]
+  },
+  tags: ["matching", "customers", "incremental"],
+  assertions: {
+    uniqueKey: ["source_id"]
+  }
+}
+
+// Import the matcher
+const matcher = require("../../includes/matcher");
+
+// Execute incremental matching
+${
+  matcher.incremental({
+    // Source data
+    sourceTable: ref("source_customers"),
+    
+    // Reference table
+    targetTable: ref("reference_customers"),
+    
+    // Field mappings
+    fieldMappings: {
+      firstName: {source: "first_name", target: "firstname", weight: 2.0},
+      lastName: {source: "last_name", target: "lastname", weight: 2.0},
+      email: {source: "email_address", target: "email", weight: 3.0},
+      phone: {source: "phone_number", target: "phone", weight: 1.5},
+      zipCode: {source: "zip", target: "postal_code", weight: 1.0}
+    },
+    
+    // Fields to append from reference to source
+    appendFields: ["customer_id", "date_of_birth", "gender"],
+    
+    // Match quality thresholds
+    confidenceThreshold: 0.7,
+    
+    // Incremental processing settings
+    incrementalField: "updated_at",
+    lookbackDays: 7
+  })
+}

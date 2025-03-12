@@ -1,0 +1,27 @@
+config {
+  type: "table",
+  description: "Customer record clustering using transitive closure",
+  bigquery: {
+    partitionBy: "generated_time"
+  },
+  tags: ["matching", "customers", "clustering"],
+  dependencies: ["customer_matching"]
+}
+
+// Import the matcher
+const matcher = require("../../includes/matcher");
+
+// Execute clustering with transitive closure
+${
+  matcher.findClusters({
+    // Table with matches to process
+    matchesTable: ref("customer_matching"),
+    
+    // Maximum number of hops to follow for transitivity
+    maxIterations: 3,
+    
+    // Column names
+    sourceIdColumn: "source_id",
+    targetIdColumn: "reference_id"
+  })
+}

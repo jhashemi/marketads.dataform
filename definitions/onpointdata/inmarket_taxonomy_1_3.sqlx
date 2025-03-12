@@ -1,5 +1,6 @@
 config { 
     type: "declaration",
     schema: "onpointdata",
-    name: "inmarket_taxonomy_1_3" 
-  }
+    name: "inmarket_taxonomy_1_3",
+    description: "Taxonomy mapping table for inmarket intents (version 1.3)"
+}

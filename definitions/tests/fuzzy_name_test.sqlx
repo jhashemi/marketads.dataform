@@ -1,0 +1,97 @@
+config {
+  type: "test",
+  description: "Test various name fuzzy matching scenarios",
+  tags: ["test", "matching", "names"],
+  dependencies: []
+}
+
+// Import the matcher
+const matcher = require("../../includes/matcher");
+
+-- Create test data with various name variations
+CREATE OR REPLACE TEMPORARY TABLE test_source_names AS
+SELECT * FROM (
+  SELECT 'S1' AS id, 'Robert' AS first_name, 'Smith' AS last_name
+  UNION ALL SELECT 'S2' AS id, 'Bob' AS first_name, 'Smith' AS last_name
+  UNION ALL SELECT 'S3' AS id, 'William' AS first_name, 'Johnson' AS last_name
+  UNION ALL SELECT 'S4' AS id, 'Bill' AS first_name, 'Johnson' AS last_name
+  UNION ALL SELECT 'S5' AS id, 'Elizabeth' AS first_name, 'Taylor' AS last_name
+  UNION ALL SELECT 'S6' AS id, 'Beth' AS first_name, 'Taylor' AS last_name
+  UNION ALL SELECT 'S7' AS id, 'Richard' AS first_name, 'Jones' AS last_name
+  UNION ALL SELECT 'S8' AS id, 'Dick' AS first_name, 'Jones' AS last_name
+  UNION ALL SELECT 'S9' AS id, 'James' AS first_name, 'Williams' AS last_name
+  UNION ALL SELECT 'S10' AS id, 'Jim' AS first_name, 'Williams' AS last_name
+  UNION ALL SELECT 'S11' AS id, 'John' AS first_name, 'O\'Connor' AS last_name
+  UNION ALL SELECT 'S12' AS id, 'John' AS first_name, 'OConnor' AS last_name
+  UNION ALL SELECT 'S13' AS id, 'Mary-Anne' AS first_name, 'Johnson' AS last_name
+  UNION ALL SELECT 'S14' AS id, 'Maryanne' AS first_name, 'Johnson' AS last_name
+);
+
+CREATE OR REPLACE TEMPORARY TABLE test_target_names AS
+SELECT * FROM (
+  SELECT 'T1' AS id, 'Robert' AS firstname, 'Smith' AS lastname, 'ID1' AS customer_id
+  UNION ALL SELECT 'T2' AS id, 'William' AS firstname, 'Johnson' AS lastname, 'ID2' AS customer_id
+  UNION ALL SELECT 'T3' AS id, 'Elizabeth' AS firstname, 'Taylor' AS lastname, 'ID3' AS customer_id
+  UNION ALL SELECT 'T4' AS id, 'Richard' AS firstname, 'Jones' AS lastname, 'ID4' AS customer_id
+  UNION ALL SELECT 'T5' AS id, 'James' AS firstname, 'Williams' AS lastname, 'ID5' AS customer_id
+  UNION ALL SELECT 'T6' AS id, 'John' AS firstname, 'O''Connor' AS lastname, 'ID6' AS customer_id
+  UNION ALL SELECT 'T7' AS id, 'Mary-Anne' AS firstname, 'Johnson' AS lastname, 'ID7' AS customer_id
+);
+
+-- Run matching with focus on fuzzy name matching
+${
+  matcher.waterfall({
+    sourceTable: 'test_source_names',
+    targetTable: 'test_target_names',
+    fieldMappings: {
+      firstName: {
+        source: "first_name", 
+        target: "firstname", 
+        weight: 2.0,
+        type: "first_name"
+      },
+      lastName: {
+        source: "last_name", 
+        target: "lastname", 
+        weight: 2.0,
+        type: "last_name"
+      }
+    },
+    appendFields: ["customer_id"],
+    outputTable: 'test_name_results',
+    confidenceThreshold: 0.6  // Lower threshold to catch name variations
+  })
+}
+
+-- Verify name matching results
+SELECT
+  CASE
+    -- Verify nicknames match with full names
+    WHEN (SELECT COUNT(*) FROM test_name_results 
+          WHERE source_id = 'S2' AND reference_id = 'T1') != 1 
+          THEN 'FAIL: Bob should match with Robert'
+    WHEN (SELECT COUNT(*) FROM test_name_results 
+          WHERE source_id = 'S4' AND reference_id = 'T2') != 1 
+          THEN 'FAIL: Bill should match with William'
+    WHEN (SELECT COUNT(*) FROM test_name_results 
+          WHERE source_id = 'S6' AND reference_id = 'T3') != 1 
+          THEN 'FAIL: Beth should match with Elizabeth'
+    WHEN (SELECT COUNT(*) FROM test_name_results 
+          WHERE source_id = 'S8' AND reference_id = 'T4') != 1 
+          THEN 'FAIL: Dick should match with Richard'
+    WHEN (SELECT COUNT(*) FROM test_name_results 
+          WHERE source_id = 'S10' AND reference_id = 'T5') != 1 
+          THEN 'FAIL: Jim should match with James'
+          
+    -- Verify apostrophe handling
+    WHEN (SELECT COUNT(*) FROM test_name_results 
+          WHERE source_id = 'S12' AND reference_id = 'T6') != 1 
+          THEN 'FAIL: OConnor should match with O''Connor'
+          
+    -- Verify hyphen handling
+    WHEN (SELECT COUNT(*) FROM test_name_results 
+          WHERE source_id = 'S14' AND reference_id = 'T7') != 1 
+          THEN 'FAIL: Maryanne should match with Mary-Anne'
+          
+    ELSE 'PASS: All name variations matched correctly'
+  END AS name_matching_test;

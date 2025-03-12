@@ -1,0 +1,95 @@
+config {
+  type: "test",
+  description: "Test edge cases in matching system",
+  tags: ["test", "matching", "edge_cases"],
+  dependencies: []
+}
+
+// Import the matcher
+const matcher = require("../../includes/matcher");
+
+-- Create test data with edge cases
+CREATE OR REPLACE TEMPORARY TABLE test_source_edge_cases AS
+SELECT * FROM (
+  -- Empty/null fields
+  SELECT 'S1' AS id, NULL AS first_name, 'Smith' AS last_name, 'test@example.com' AS email
+  UNION ALL SELECT 'S2' AS id, 'John' AS first_name, NULL AS last_name, 'test@example.com' AS email
+  UNION ALL SELECT 'S3' AS id, 'John' AS first_name, 'Smith' AS last_name, NULL AS email
+  
+  -- Very short fields
+  UNION ALL SELECT 'S4' AS id, 'J' AS first_name, 'Smith' AS last_name, 'test@example.com' AS email
+  UNION ALL SELECT 'S5' AS id, 'John' AS first_name, 'S' AS last_name, 'test@example.com' AS email
+  
+  -- Very long fields
+  UNION ALL SELECT 'S6' AS id, 'Johnathansuperlongfirstname' AS first_name, 'Smith' AS last_name, 'test@example.com' AS email
+  UNION ALL SELECT 'S7' AS id, 'John' AS first_name, 'Smithjoneswilliamslonglastname' AS last_name, 'test@example.com' AS email
+  
+  -- Special characters
+  UNION ALL SELECT 'S8' AS id, 'John-Paul' AS first_name, 'Smith-Jones' AS last_name, 'test@example.com' AS email
+  UNION ALL SELECT 'S9' AS id, 'José' AS first_name, 'García' AS last_name, 'test@example.com' AS email
+  
+  -- Mixed case
+  UNION ALL SELECT 'S10' AS id, 'JoHn' AS first_name, 'SMitH' AS last_name, 'Test@Example.com' AS email
+);
+
+CREATE OR REPLACE TEMPORARY TABLE test_target_edge_cases AS
+SELECT * FROM (
+  -- Reference records for testing
+  SELECT 'T1' AS id, 'John' AS firstname, 'Smith' AS lastname, 'test@example.com' AS email_address, 'DATA1' AS reference_data
+  UNION ALL SELECT 'T2' AS id, 'J' AS firstname, 'Smith' AS lastname, 'test@example.com' AS email_address, 'DATA2' AS reference_data
+  UNION ALL SELECT 'T3' AS id, 'John' AS firstname, 'S' AS lastname, 'test@example.com' AS email_address, 'DATA3' AS reference_data
+  UNION ALL SELECT 'T4' AS id, 'Johnathansuperlongfirstname' AS firstname, 'Smith' AS lastname, 'test@example.com' AS email_address, 'DATA4' AS reference_data
+  UNION ALL SELECT 'T5' AS id, 'John' AS firstname, 'Smithjoneswilliamslonglastname' AS lastname, 'test@example.com' AS email_address, 'DATA5' AS reference_data
+  UNION ALL SELECT 'T6' AS id, 'John-Paul' AS firstname, 'Smith-Jones' AS lastname, 'test@example.com' AS email_address, 'DATA6' AS reference_data
+  UNION ALL SELECT 'T7' AS id, 'José' AS firstname, 'García' AS lastname, 'test@example.com' AS email_address, 'DATA7' AS reference_data
+  UNION ALL SELECT 'T8' AS id, 'JOHN' AS firstname, 'SMITH' AS lastname, 'TEST@EXAMPLE.COM' AS email_address, 'DATA8' AS reference_data
+);
+
+-- Run matching with edge cases
+${
+  matcher.waterfall({
+    sourceTable: 'test_source_edge_cases',
+    targetTable: 'test_target_edge_cases',
+    fieldMappings: {
+      firstName: {source: "first_name", target: "firstname"},
+      lastName: {source: "last_name", target: "lastname"},
+      email: {source: "email", target: "email_address"}
+    },
+    appendFields: ["reference_data"],
+    outputTable: 'test_edge_case_results'
+  })
+}
+
+-- Verify edge case handling
+SELECT
+  CASE
+    -- Test NULL handling (should match on available fields)
+    WHEN (SELECT reference_id FROM test_edge_case_results WHERE source_id = 'S1') IS NULL 
+         THEN 'FAIL: Should match null first_name via other fields'
+    WHEN (SELECT reference_id FROM test_edge_case_results WHERE source_id = 'S2') IS NULL 
+         THEN 'FAIL: Should match null last_name via other fields'
+         
+    -- Test short field handling
+    WHEN (SELECT reference_id FROM test_edge_case_results WHERE source_id = 'S4') != 'T2' 
+         THEN 'FAIL: Short first name should match'
+    WHEN (SELECT reference_id FROM test_edge_case_results WHERE source_id = 'S5') != 'T3' 
+         THEN 'FAIL: Short last name should match'
+         
+    -- Test long field handling
+    WHEN (SELECT reference_id FROM test_edge_case_results WHERE source_id = 'S6') != 'T4' 
+         THEN 'FAIL: Long first name should match'
+    WHEN (SELECT reference_id FROM test_edge_case_results WHERE source_id = 'S7') != 'T5' 
+         THEN 'FAIL: Long last name should match'
+         
+    -- Test special character handling
+    WHEN (SELECT reference_id FROM test_edge_case_results WHERE source_id = 'S8') != 'T6' 
+         THEN 'FAIL: Hyphenated names should match'
+    WHEN (SELECT reference_id FROM test_edge_case_results WHERE source_id = 'S9') != 'T7' 
+         THEN 'FAIL: Accented characters should match'
+         
+    -- Test case sensitivity
+    WHEN (SELECT reference_id FROM test_edge_case_results WHERE source_id = 'S10') != 'T8' 
+         THEN 'FAIL: Mixed case should match regardless of case'
+         
+    ELSE 'PASS: All edge cases handled correctly'
+  END AS edge_case_test;

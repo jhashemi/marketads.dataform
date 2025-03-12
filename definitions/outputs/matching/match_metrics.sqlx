@@ -1,0 +1,28 @@
+config {
+  type: "table",
+  description: "Match metrics including DOB append rate",
+  schema: "onpointdata",
+  name: "tmp_andrew_table_match_metrics",
+  dependencies: ["outputs/matching/match_results"],
+  bigquery: {
+    partitionBy: "DATE(analysis_timestamp)"
+  }
+}
+
+-- Import the matching system and configuration
+const matchingSystem = require("includes/matching_system");
+const config = require("includes/config");
+
+-- Calculate match metrics
+${matchingSystem.calculateMatchMetricsSql(
+  ref("outputs/matching/match_results"),
+  "FirstNameLastName", // Source ID field
+  "DATE_OF_BIRTH"      // Target DOB field
+)},
+
+-- Add metadata
+CURRENT_TIMESTAMP() AS analysis_timestamp,
+'${process.env.DATAFORM_ENVIRONMENT || "development"}' AS environment,
+
+-- Add target metrics for reference
+${config.TARGETS.DOB_APPEND_RATE} AS target_dob_append_rate 

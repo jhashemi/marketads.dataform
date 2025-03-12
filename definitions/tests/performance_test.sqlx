@@ -1,0 +1,125 @@
+config {
+  type: "test",
+  description: "Performance test with larger synthetic dataset",
+  tags: ["test", "matching", "performance"],
+  dependencies: []
+}
+
+// Import the matcher
+const matcher = require("../../includes/matcher");
+
+-- Generate larger synthetic dataset for performance testing
+CREATE OR REPLACE TEMPORARY TABLE perf_test_source AS
+WITH names AS (
+  SELECT 'John' AS first_name, 'Smith' AS last_name
+  UNION ALL SELECT 'Jane' AS first_name, 'Doe' AS last_name
+  UNION ALL SELECT 'Michael' AS first_name, 'Johnson' AS last_name
+  UNION ALL SELECT 'Sarah' AS first_name, 'Williams' AS last_name
+  UNION ALL SELECT 'David' AS first_name, 'Brown' AS last_name
+  UNION ALL SELECT 'Emily' AS first_name, 'Jones' AS last_name
+  UNION ALL SELECT 'Robert' AS first_name, 'Miller' AS last_name
+  UNION ALL SELECT 'Jennifer' AS first_name, 'Davis' AS last_name
+  UNION ALL SELECT 'William' AS first_name, 'Garcia' AS last_name
+  UNION ALL SELECT 'Elizabeth' AS first_name, 'Rodriguez' AS last_name
+),
+emails AS (
+  SELECT 'example.com' AS domain
+  UNION ALL SELECT 'gmail.com' AS domain
+  UNION ALL SELECT 'outlook.com' AS domain
+  UNION ALL SELECT 'yahoo.com' AS domain
+  UNION ALL SELECT 'hotmail.com' AS domain
+),
+domains AS (
+  SELECT 
+    CONCAT(LOWER(first_name), '.', LOWER(last_name), '@', domain) AS email
+  FROM names CROSS JOIN emails
+),
+synthetic_data AS (
+  SELECT
+    CONCAT('S', CAST(ROW_NUMBER() OVER() AS STRING)) AS id,
+    first_name,
+    last_name,
+    email
+  FROM names CROSS JOIN domains
+  LIMIT 1000 -- Adjust based on desired test size
+)
+SELECT * FROM synthetic_data;
+
+CREATE OR REPLACE TEMPORARY TABLE perf_test_target AS
+WITH names AS (
+  SELECT 'John' AS firstname, 'Smith' AS lastname
+  UNION ALL SELECT 'Jane' AS firstname, 'Doe' AS lastname
+  UNION ALL SELECT 'Michael' AS firstname, 'Johnson' AS lastname
+  UNION ALL SELECT 'Sarah' AS firstname, 'Williams' AS lastname
+  UNION ALL SELECT 'David' AS firstname, 'Brown' AS lastname
+  UNION ALL SELECT 'Emily' AS firstname, 'Jones' AS lastname
+  UNION ALL SELECT 'Robert' AS firstname, 'Miller' AS lastname
+  UNION ALL SELECT 'Jennifer' AS firstname, 'Davis' AS lastname
+  UNION ALL SELECT 'William' AS firstname, 'Garcia' AS lastname
+  UNION ALL SELECT 'Elizabeth' AS firstname, 'Rodriguez' AS lastname
+),
+emails AS (
+  SELECT 'example.com' AS domain
+  UNION ALL SELECT 'gmail.com' AS domain
+  UNION ALL SELECT 'outlook.com' AS domain
+  UNION ALL SELECT 'yahoo.com' AS domain
+  UNION ALL SELECT 'hotmail.com' AS domain
+),
+domains AS (
+  SELECT 
+    CONCAT(LOWER(firstname), '.', LOWER(lastname), '@', domain) AS email_address
+  FROM names CROSS JOIN emails
+),
+synthetic_data AS (
+  SELECT
+    CONCAT('T', CAST(ROW_NUMBER() OVER() AS STRING)) AS id,
+    firstname,
+    lastname,
+    email_address,
+    CONCAT('CUST-', LPAD(CAST(FLOOR(RAND() * 1000000) AS STRING), 6, '0')) AS customer_id
+  FROM names CROSS JOIN domains
+  LIMIT 1200 -- Slightly larger than source for realistic scenario
+)
+SELECT * FROM synthetic_data;
+
+-- Capture start time
+CREATE OR REPLACE TEMPORARY TABLE perf_test_start AS
+SELECT CURRENT_TIMESTAMP() AS start_time;
+
+-- Run matching
+${
+  matcher.waterfall({
+    sourceTable: 'perf_test_source',
+    targetTable: 'perf_test_target',
+    fieldMappings: {
+      firstName: {source: "first_name", target: "firstname"},
+      lastName: {source: "last_name", target: "lastname"},
+      email: {source: "email", target: "email_address"}
+    },
+    appendFields: ["customer_id"],
+    outputTable: 'perf_test_results'
+  })
+}
+
+-- Capture end time and calculate duration
+CREATE OR REPLACE TEMPORARY TABLE perf_test_metrics AS
+SELECT
+  (SELECT start_time FROM perf_test_start) AS start_time,
+  CURRENT_TIMESTAMP() AS end_time,
+  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), (SELECT start_time FROM perf_test_start), MILLISECOND) AS duration_ms,
+  (SELECT COUNT(*) FROM perf_test_source) AS source_count,
+  (SELECT COUNT(*) FROM perf_test_results WHERE reference_id IS NOT NULL) AS matched_count,
+  (SELECT COUNT(*) FROM perf_test_results WHERE reference_id IS NOT NULL) / (SELECT COUNT(*) FROM perf_test_source) AS match_rate
+;
+
+-- Report performance metrics
+SELECT
+  start_time,
+  end_time,
+  duration_ms,
+  CONCAT(CAST(duration_ms / 1000 AS STRING), ' seconds') AS duration_readable,
+  source_count,
+  matched_count,
+  CONCAT(CAST(match_rate * 100 AS STRING), '%') AS match_rate_pct,
+  CONCAT(CAST(source_count / (duration_ms / 1000) AS STRING), ' records/second') AS throughput
+FROM perf_test_metrics;

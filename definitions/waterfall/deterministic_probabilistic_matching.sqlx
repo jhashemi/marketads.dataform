@@ -1,0 +1,213 @@
+config {
+  type: "table",
+  name: "deterministic_probabilistic_customer_matching",
+  description: "Customer matching using a hybrid approach that combines deterministic rules with probabilistic waterfall matching",
+  columns: {
+    customer_id: "Unique customer identifier",
+    reference_id: "Reference record identifier",
+    match_key: "Key used for matching",
+    data_source: "Source of the match (reference table)",
+    match_score: "Confidence score of the match",
+    confidence: "Confidence level (HIGH, MEDIUM, LOW, NONE)",
+    email_verified: "Email from verified source",
+    phone_verified: "Phone from verified source",
+    customer_since: "Customer since date from best available source",
+    match_type: "Type of match (DETERMINISTIC, PROBABILISTIC, UNMATCHED)"
+  },
+  tags: ["matching", "waterfall", "customer", "deterministic", "probabilistic"]
+}
+
+/* 
+ * Deterministic-then-Probabilistic Customer Matching
+ *
+ * This implementation demonstrates a hybrid matching approach where:
+ * 1. First, deterministic rules are applied to find exact matches with high confidence
+ * 2. Then, for unmatched records, probabilistic matching using the waterfall approach is applied
+ * 
+ * This provides the best of both worlds: exact matches when possible, and
+ * fuzzy matching for the remaining records, all while maintaining the
+ * waterfall priority order for reference tables.
+ */
+
+const waterfallPipeline = require('/includes/pipeline/waterfall_pipeline');
+
+// Define reference tables in priority order
+const referenceTables = [
+  { 
+    id: 'verified_customers', 
+    table: 'reference_data.verified_customers', 
+    priority: 1, 
+    name: 'VERIFIED',
+    keyField: 'customer_id',
+    confidenceMultiplier: 1.2,
+    requiredFields: ['email']
+  },
+  { 
+    id: 'historical_customers', 
+    table: 'reference_data.historical_customers', 
+    priority: 2, 
+    name: 'HISTORICAL',
+    keyField: 'customer_id',
+    confidenceMultiplier: 1.0,
+    requiredFields: ['email']
+  },
+  { 
+    id: 'third_party_data', 
+    table: 'reference_data.third_party_customers', 
+    priority: 3, 
+    name: 'THIRD_PARTY',
+    keyField: 'external_id',
+    confidenceMultiplier: 0.8
+  }
+];
+
+// Define field mappings for each reference table
+const fieldMappings = {
+  'verified_customers': [
+    { sourceField: 'email', targetField: 'email_verified' },
+    { sourceField: 'phone', targetField: 'phone_verified' },
+    { sourceField: 'customer_since_date', targetField: 'customer_since' },
+    { sourceField: 'customer_id', targetField: 'verified_customer_id' }
+  ],
+  'historical_customers': [
+    { sourceField: 'email_address', targetField: 'email_historical' },
+    { sourceField: 'phone_number', targetField: 'phone_historical' },
+    { sourceField: 'first_seen_date', targetField: 'customer_since' },
+    { sourceField: 'legacy_id', targetField: 'historical_customer_id' }
+  ],
+  'third_party_data': [
+    { sourceField: 'contact_email', targetField: 'email_external' },
+    { sourceField: 'contact_phone', targetField: 'phone_external' },
+    { sourceField: 'external_id', targetField: 'third_party_id' }
+  ]
+};
+
+// Define deterministic rules for exact matching
+const deterministicRules = {
+  'verified_customers': [
+    // Rule 1: Exact match on email AND (first name AND last name)
+    {
+      conditions: [
+        { sourceField: 'email', targetField: 'email', exact: true },
+        { sourceField: 'first_name', targetField: 'first_name', standardized: true },
+        { sourceField: 'last_name', targetField: 'last_name', standardized: true }
+      ]
+    },
+    // Rule 2: Exact match on phone AND (first name AND last name)
+    {
+      conditions: [
+        { sourceField: 'phone', targetField: 'phone', exact: true },
+        { sourceField: 'first_name', targetField: 'first_name', standardized: true },
+        { sourceField: 'last_name', targetField: 'last_name', standardized: true }
+      ]
+    }
+  ],
+  'historical_customers': [
+    // Rule 1: Exact match on email AND (first name AND last name)
+    {
+      conditions: [
+        { sourceField: 'email', targetField: 'email_address', exact: true },
+        { sourceField: 'first_name', targetField: 'first_name', standardized: true },
+        { sourceField: 'last_name', targetField: 'last_name', standardized: true }
+      ]
+    },
+    // Rule 2: Exact match on phone AND (first name AND last name)
+    {
+      conditions: [
+        { sourceField: 'phone', targetField: 'phone_number', exact: true },
+        { sourceField: 'first_name', targetField: 'first_name', standardized: true },
+        { sourceField: 'last_name', targetField: 'last_name', standardized: true }
+      ]
+    }
+  ],
+  'third_party_data': [
+    // Rule 1: Exact match on email AND (first name AND last name)
+    {
+      conditions: [
+        { sourceField: 'email', targetField: 'contact_email', exact: true },
+        { sourceField: 'first_name', targetField: 'first_name', standardized: true },
+        { sourceField: 'last_name', targetField: 'last_name', standardized: true }
+      ]
+    }
+  ]
+};
+
+// Define probabilistic matching rules for fuzzy matching
+const matchingRules = {
+  'verified_customers': {
+    blocking: [
+      { 
+        condition: `
+          (s.email = t.email OR 
+           s.phone = t.phone OR
+           (s.zip_code = t.zip_code AND 
+            UPPER(SUBSTR(s.last_name, 1, 3)) = UPPER(SUBSTR(t.last_name, 1, 3))))
+        `
+      }
+    ],
+    scoring: [
+      { sourceField: 'first_name', targetField: 'first_name', method: 'jaro_winkler', weight: 1.5 },
+      { sourceField: 'last_name', targetField: 'last_name', method: 'jaro_winkler', weight: 2.0 },
+      { sourceField: 'address', targetField: 'address', method: 'token', weight: 1.0 },
+      { sourceField: 'zip_code', targetField: 'zip_code', method: 'exact', weight: 0.8 }
+    ]
+  },
+  'historical_customers': {
+    blocking: [
+      { 
+        condition: `
+          (s.email = t.email_address OR 
+           s.phone = t.phone_number OR
+           (s.zip_code = t.zip_code AND 
+            UPPER(SUBSTR(s.last_name, 1, 3)) = UPPER(SUBSTR(t.last_name, 1, 3))))
+        `
+      }
+    ],
+    scoring: [
+      { sourceField: 'first_name', targetField: 'first_name', method: 'jaro_winkler', weight: 1.5 },
+      { sourceField: 'last_name', targetField: 'last_name', method: 'jaro_winkler', weight: 2.0 },
+      { sourceField: 'address', targetField: 'address', method: 'token', weight: 1.0 },
+      { sourceField: 'zip_code', targetField: 'zip_code', method: 'exact', weight: 0.8 }
+    ]
+  },
+  'third_party_data': {
+    blocking: [
+      { 
+        condition: `
+          (s.email = t.contact_email OR 
+           s.phone = t.contact_phone OR
+           (s.zip_code = t.postal_code AND 
+            UPPER(SUBSTR(s.last_name, 1, 3)) = UPPER(SUBSTR(t.first_name, 1, 3))))
+        `
+      }
+    ],
+    scoring: [
+      { sourceField: 'first_name', targetField: 'first_name', method: 'jaro_winkler', weight: 1.5 },
+      { sourceField: 'last_name', targetField: 'last_name', method: 'jaro_winkler', weight: 2.0 },
+      { sourceField: 'address', targetField: 'address', method: 'token', weight: 0.8 },
+      { sourceField: 'zip_code', targetField: 'postal_code', method: 'exact', weight: 0.8 }
+    ]
+  }
+};
+
+// Define the pipeline configuration
+const pipelineConfig = {
+  sourceTable: 'sources.customer_data',
+  referenceTables,
+  fieldMappings,
+  deterministicRules,
+  matchingRules,
+  thresholds: {
+    high: 0.85,
+    medium: 0.70,
+    low: 0.55
+  },
+  outputTable: 'deterministic_probabilistic_customer_matching',
+  includeUnmatched: true
+};
+
+// Generate the SQL for the deterministic-then-probabilistic matching pipeline
+const matchingSql = waterfallPipeline.generateDeterministicThenProbabilisticPipeline(pipelineConfig);
+
+// Execute the generated SQL
+${matchingSql} 

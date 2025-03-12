@@ -1,0 +1,70 @@
+config {
+  type: "test",
+  description: "Test of multi-table waterfall matching prioritization",
+  tags: ["test", "matching", "waterfall"],
+  dependencies: []
+}
+
+// Import the matcher
+const matcher = require("../../includes/matcher");
+
+-- Create 3 reference tables with different priorities
+CREATE OR REPLACE TEMPORARY TABLE test_high_priority AS
+SELECT * FROM (
+  SELECT 'T1' AS id, 'John' AS firstname, 'Smith' AS lastname, 'A123' AS customer_id, 'HIGH' AS data_source
+);
+
+CREATE OR REPLACE TEMPORARY TABLE test_medium_priority AS
+SELECT * FROM (
+  SELECT 'T2' AS id, 'John' AS firstname, 'Smith' AS lastname, 'B456' AS customer_id, 'MEDIUM' AS data_source
+);
+
+CREATE OR REPLACE TEMPORARY TABLE test_low_priority AS
+SELECT * FROM (
+  SELECT 'T3' AS id, 'John' AS firstname, 'Smith' AS lastname, 'C789' AS customer_id, 'LOW' AS data_source
+);
+
+-- Create source data that will match all 3 reference tables
+CREATE OR REPLACE TEMPORARY TABLE test_source_data AS
+SELECT * FROM (
+  SELECT 'S1' AS id, 'John' AS first_name, 'Smith' AS last_name, 'john.smith@example.com' AS email
+);
+
+-- Run waterfall matching
+${
+  matcher.waterfall({
+    sourceTable: 'test_source_data',
+    referenceTables: [
+      {name: 'test_high_priority', priority: 1, reliability: 'HIGH'},
+      {name: 'test_medium_priority', priority: 2, reliability: 'MEDIUM'},
+      {name: 'test_low_priority', priority: 3, reliability: 'LOW'}
+    ],
+    fieldMappings: {
+      firstName: {source: "first_name", target: "firstname"},
+      lastName: {source: "last_name", target: "lastname"}
+    },
+    appendFields: ["customer_id", "data_source"],
+    outputTable: 'test_waterfall_results'
+  })
+}
+
+-- Verify waterfall prioritization
+SELECT
+  CASE
+    -- Check that only one match was found
+    WHEN (SELECT COUNT(*) FROM test_waterfall_results) != 1 THEN 'FAIL: Should have one result'
+    
+    -- Check that the high priority match was selected
+    WHEN (SELECT reference_id FROM test_waterfall_results WHERE source_id = 'S1') != 'T1'
+         THEN 'FAIL: Should match with highest priority reference'
+    
+    -- Check that the high priority data was appended
+    WHEN (SELECT customer_id FROM test_waterfall_results WHERE source_id = 'S1') != 'A123'
+         THEN 'FAIL: Should append data from highest priority match'
+    
+    -- Check data source field
+    WHEN (SELECT data_source FROM test_waterfall_results WHERE source_id = 'S1') != 'HIGH'
+         THEN 'FAIL: Should append correct data source'
+         
+    ELSE 'PASS: Waterfall prioritization worked correctly'
+  END AS waterfall_test;

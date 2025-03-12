@@ -1,0 +1,257 @@
+config {
+  type: "operations",
+  description: "End-to-end test for the record matching system",
+  tags: ["test", "e2e", "matching"]
+}
+
+-- Create source test data
+CREATE TEMP TABLE test_source_data AS (
+  SELECT * FROM UNNEST([
+    STRUCT(1 AS id, "John" AS first_name, "Smith" AS last_name, "123 Main St" AS address, "10001" AS zip, "john.smith@example.com" AS email, "1980-01-15" AS dob),
+    STRUCT(2 AS id, "Michael" AS first_name, "Johnson" AS last_name, "456 Oak Ave" AS address, "20001" AS zip, "mjohnson@example.com" AS email, "1975-05-20" AS dob),
+    STRUCT(3 AS id, "Robert" AS first_name, "Williams" AS last_name, "789 Pine Rd" AS address, "30001" AS zip, "rwilliams@example.com" AS email, "1990-11-30" AS dob),
+    STRUCT(4 AS id, "James" AS first_name, "Brown" AS last_name, "321 Maple Dr" AS address, "40001" AS zip, "james.brown@example.com" AS email, "1982-07-04" AS dob),
+    STRUCT(5 AS id, "Mary" AS first_name, "Jones" AS last_name, "555 Cedar Ln" AS address, "50001" AS zip, "mary.jones@example.com" AS email, "1988-03-12" AS dob)
+  ])
+);
+
+-- Create target test data with variations
+CREATE TEMP TABLE test_target_data AS (
+  SELECT * FROM UNNEST([
+    STRUCT(101 AS id, "Johnny" AS first_name, "Smith" AS last_name, "123 Main Street" AS address, "10001" AS zip, "john.smith@example.com" AS email, "1980-01-15" AS dob),
+    STRUCT(102 AS id, "Mike" AS first_name, "Johnson" AS last_name, "456 Oak Avenue" AS address, "20001" AS zip, "mike.johnson@example.com" AS email, "1975-05-20" AS dob),
+    STRUCT(103 AS id, "Bob" AS first_name, "Williams" AS last_name, "789 Pine Road" AS address, "30001" AS zip, "robert.williams@example.com" AS email, "1990-11-30" AS dob),
+    STRUCT(104 AS id, "Jim" AS first_name, "Brown" AS last_name, "321 Maple Drive" AS address, "40001" AS zip, "j.brown@example.com" AS email, "1982-07-04" AS dob),
+    STRUCT(105 AS id, "Maria" AS first_name, "Jones" AS last_name, "555 Cedar Lane" AS address, "50001" AS zip, "m.jones@example.com" AS email, "1988-03-12" AS dob),
+    STRUCT(106 AS id, "Thomas" AS first_name, "Anderson" AS last_name, "888 Elm St" AS address, "60001" AS zip, "t.anderson@example.com" AS email, "1995-09-22" AS dob)
+  ])
+);
+
+-- Create a table with expected matches
+CREATE TEMP TABLE expected_matches AS (
+  SELECT * FROM UNNEST([
+    STRUCT(1 AS source_id, 101 AS target_id, "HIGH" AS expected_tier),
+    STRUCT(2 AS source_id, 102 AS target_id, "HIGH" AS expected_tier),
+    STRUCT(3 AS source_id, 103 AS target_id, "HIGH" AS expected_tier),
+    STRUCT(4 AS source_id, 104 AS target_id, "MEDIUM" AS expected_tier),
+    STRUCT(5 AS source_id, 105 AS target_id, "MEDIUM" AS expected_tier)
+  ])
+);
+
+-- Import the necessary functions
+${util.sql.phonetic_functions.createSoundexFunction()}
+${util.sql.phonetic_functions.createMetaphoneFunction()}
+${util.sql.similarity_functions.levenshteinSimilaritySql("source.first_name", "target.first_name")}
+${util.sql.similarity_functions.jaroWinklerSimilaritySql("source.last_name", "target.last_name")}
+${util.sql.similarity_functions.standardizeAddressSql("source.address")}
+${util.sql.similarity_functions.standardizeAddressSql("target.address")}
+
+-- Generate blocking keys
+CREATE TEMP TABLE source_with_blocking AS (
+  SELECT 
+    *,
+    -- Create various blocking keys
+    SUBSTR(zip, 1, 3) || SOUNDEX(last_name) AS zip_soundex_lastname,
+    SUBSTR(UPPER(first_name), 1, 3) || SUBSTR(UPPER(last_name), 1, 3) AS name_key
+  FROM test_source_data
+);
+
+CREATE TEMP TABLE target_with_blocking AS (
+  SELECT 
+    *,
+    -- Create various blocking keys
+    SUBSTR(zip, 1, 3) || SOUNDEX(last_name) AS zip_soundex_lastname,
+    SUBSTR(UPPER(first_name), 1, 3) || SUBSTR(UPPER(last_name), 1, 3) AS name_key
+  FROM test_target_data
+);
+
+-- Create candidate pairs with blocking
+CREATE TEMP TABLE candidate_pairs AS (
+  SELECT 
+    source.id AS source_id,
+    target.id AS target_id
+  FROM source_with_blocking source
+  JOIN target_with_blocking target
+    ON source.zip_soundex_lastname = target.zip_soundex_lastname
+      OR source.name_key = target.name_key
+      OR source.email = target.email
+);
+
+-- Score and match candidates
+CREATE TEMP TABLE match_results AS (
+  WITH scored_candidates AS (
+    SELECT
+      source_id,
+      target_id,
+      (
+        -- Name similarity score (weighted)
+        2.0 * CAST(${util.sql.similarity_functions.jaroWinklerSimilaritySql("source.first_name", "target.first_name")} AS FLOAT64) +
+        2.5 * CAST(${util.sql.similarity_functions.jaroWinklerSimilaritySql("source.last_name", "target.last_name")} AS FLOAT64) +
+        -- Address similarity score
+        1.5 * (
+          CASE WHEN ${util.sql.similarity_functions.standardizeAddressSql("source.address")} = 
+                    ${util.sql.similarity_functions.standardizeAddressSql("target.address")}
+               THEN 1.0
+               ELSE CAST(${util.sql.similarity_functions.levenshteinSimilaritySql(
+                 util.sql.similarity_functions.standardizeAddressSql("source.address"), 
+                 util.sql.similarity_functions.standardizeAddressSql("target.address")
+               )} AS FLOAT64)
+          END
+        ) +
+        -- ZIP score
+        1.0 * (CASE WHEN source.zip = target.zip THEN 1.0 ELSE 0.0 END) +
+        -- Email score
+        3.0 * (CASE WHEN source.email = target.email THEN 1.0 ELSE 0.0 END) +
+        -- DOB score
+        3.0 * (CASE WHEN source.dob = target.dob THEN 1.0 ELSE 0.0 END)
+      ) / 13.0 AS match_score
+    FROM candidate_pairs
+    JOIN test_source_data source ON source.id = candidate_pairs.source_id
+    JOIN test_target_data target ON target.id = candidate_pairs.target_id
+  )
+  SELECT
+    source_id,
+    target_id,
+    match_score,
+    CASE 
+      WHEN match_score >= 0.85 THEN 'HIGH'
+      WHEN match_score >= 0.65 THEN 'MEDIUM'
+      WHEN match_score >= 0.45 THEN 'LOW'
+      ELSE 'NO_MATCH'
+    END AS match_tier,
+    ROW_NUMBER() OVER (PARTITION BY source_id ORDER BY match_score DESC) AS rank
+  FROM scored_candidates
+  WHERE match_score >= 0.45
+);
+
+-- Get the final matches (best match per source record)
+CREATE TEMP TABLE final_matches AS (
+  SELECT
+    source_id,
+    target_id,
+    match_score,
+    match_tier
+  FROM match_results
+  WHERE rank = 1
+);
+
+-- Compare results against expected matches
+CREATE TEMP TABLE match_comparison AS (
+  SELECT
+    e.source_id,
+    e.target_id,
+    e.expected_tier,
+    COALESCE(f.match_tier, 'NO_MATCH') AS actual_tier,
+    COALESCE(f.match_score, 0) AS match_score,
+    CASE
+      WHEN f.match_tier IS NULL THEN 'MISSING MATCH'
+      WHEN e.expected_tier = f.match_tier THEN 'EXACT MATCH'
+      WHEN (e.expected_tier = 'HIGH' AND f.match_tier = 'MEDIUM') OR
+           (e.expected_tier = 'MEDIUM' AND f.match_tier = 'HIGH') THEN 'CLOSE MATCH'
+      ELSE 'MISMATCH'
+    END AS comparison_result
+  FROM expected_matches e
+  LEFT JOIN final_matches f ON e.source_id = f.source_id AND e.target_id = f.target_id
+);
+
+-- Missing expected matches (false negatives)
+CREATE TEMP TABLE missing_matches AS (
+  SELECT 
+    e.source_id,
+    e.target_id,
+    e.expected_tier,
+    'FALSE NEGATIVE' AS error_type,
+    s.first_name AS source_first_name,
+    s.last_name AS source_last_name,
+    t.first_name AS target_first_name,
+    t.last_name AS target_last_name
+  FROM expected_matches e
+  LEFT JOIN final_matches f ON e.source_id = f.source_id AND e.target_id = f.target_id
+  JOIN test_source_data s ON e.source_id = s.id
+  JOIN test_target_data t ON e.target_id = t.id
+  WHERE f.source_id IS NULL
+);
+
+-- Unexpected matches (false positives)
+CREATE TEMP TABLE unexpected_matches AS (
+  SELECT 
+    f.source_id,
+    f.target_id,
+    f.match_tier,
+    'FALSE POSITIVE' AS error_type,
+    s.first_name AS source_first_name,
+    s.last_name AS source_last_name,
+    t.first_name AS target_first_name,
+    t.last_name AS target_last_name
+  FROM final_matches f
+  LEFT JOIN expected_matches e ON f.source_id = e.source_id AND f.target_id = e.target_id
+  JOIN test_source_data s ON f.source_id = s.id
+  JOIN test_target_data t ON f.target_id = t.id
+  WHERE e.source_id IS NULL
+);
+
+-- Calculate metrics
+CREATE TEMP TABLE test_metrics AS (
+  SELECT
+    COUNT(DISTINCT e.source_id) AS total_expected_matches,
+    COUNT(DISTINCT f.source_id) AS total_actual_matches,
+    COUNTIF(f.source_id IS NOT NULL) AS true_positives,
+    (SELECT COUNT(*) FROM unexpected_matches) AS false_positives,
+    (SELECT COUNT(*) FROM missing_matches) AS false_negatives,
+    COUNTIF(f.source_id IS NOT NULL) / NULLIF(COUNT(DISTINCT e.source_id), 0) AS recall,
+    COUNTIF(f.source_id IS NOT NULL) / NULLIF(COUNT(DISTINCT f.source_id), 0) AS precision,
+    2 * (COUNTIF(f.source_id IS NOT NULL) / NULLIF(COUNT(DISTINCT e.source_id), 0)) * 
+      (COUNTIF(f.source_id IS NOT NULL) / NULLIF(COUNT(DISTINCT f.source_id), 0)) /
+      NULLIF(
+        (COUNTIF(f.source_id IS NOT NULL) / NULLIF(COUNT(DISTINCT e.source_id), 0)) + 
+        (COUNTIF(f.source_id IS NOT NULL) / NULLIF(COUNT(DISTINCT f.source_id), 0)),
+        0
+      ) AS f1_score
+  FROM expected_matches e
+  FULL OUTER JOIN final_matches f ON e.source_id = f.source_id AND e.target_id = f.target_id
+);
+
+-- Output test results
+SELECT 'End-to-End Matching Test Results' AS test_name;
+
+-- Output comparison results
+SELECT
+  'Match Comparison' AS section,
+  source_id,
+  target_id,
+  expected_tier,
+  actual_tier,
+  match_score,
+  comparison_result
+FROM match_comparison
+ORDER BY comparison_result, source_id;
+
+-- Output error details
+SELECT
+  'Error Details' AS section,
+  error_type,
+  source_id,
+  source_first_name,
+  source_last_name,
+  target_id,
+  target_first_name,
+  target_last_name
+FROM (
+  SELECT * FROM missing_matches
+  UNION ALL
+  SELECT * FROM unexpected_matches
+)
+ORDER BY error_type, source_id;
+
+-- Output metrics
+SELECT
+  'Test Metrics' AS section,
+  total_expected_matches,
+  total_actual_matches,
+  true_positives,
+  false_positives,
+  false_negatives,
+  ROUND(recall * 100, 2) AS recall_percentage,
+  ROUND(precision * 100, 2) AS precision_percentage,
+  ROUND(f1_score * 100, 2) AS f1_score_percentage
+FROM test_metrics; 

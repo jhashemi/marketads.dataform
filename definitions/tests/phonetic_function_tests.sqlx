@@ -1,0 +1,137 @@
+config {
+  type: "operations",
+  description: "Test suite for phonetic functions in BigQuery",
+  tags: ["test", "phonetic_functions"]
+}
+
+-- Create temporary tables for test cases
+CREATE TEMP TABLE phonetic_test_cases AS (
+  SELECT * FROM UNNEST([
+    STRUCT("Smith" AS original_string, "S530" AS expected_soundex, "SM0" AS expected_metaphone, "SM0" AS expected_double_metaphone, "SNATH" AS expected_nysiis),
+    STRUCT("Smyth" AS original_string, "S530" AS expected_soundex, "SM0" AS expected_metaphone, "SM0" AS expected_double_metaphone, "SNATH" AS expected_nysiis),
+    STRUCT("Johnson" AS original_string, "J525" AS expected_soundex, "JNSN" AS expected_metaphone, "JNSN" AS expected_double_metaphone, "JANSAN" AS expected_nysiis),
+    STRUCT("Jonson" AS original_string, "J525" AS expected_soundex, "JNSN" AS expected_metaphone, "JNSN" AS expected_double_metaphone, "JANSAN" AS expected_nysiis),
+    STRUCT("Williams" AS original_string, "W452" AS expected_soundex, "WLMS" AS expected_metaphone, "WLMS" AS expected_double_metaphone, "WALAN" AS expected_nysiis),
+    STRUCT("Willyams" AS original_string, "W452" AS expected_soundex, "WLMS" AS expected_metaphone, "WLMS" AS expected_double_metaphone, "WALAN" AS expected_nysiis),
+    STRUCT("Brown" AS original_string, "B650" AS expected_soundex, "BRN" AS expected_metaphone, "PRN" AS expected_double_metaphone, "BRAN" AS expected_nysiis),
+    STRUCT("Browne" AS original_string, "B650" AS expected_soundex, "BRN" AS expected_metaphone, "PRN" AS expected_double_metaphone, "BRAN" AS expected_nysiis)
+  ])
+);
+
+-- Import phonetic functions from modules
+${util.sql.phonetic_functions.createSoundexFunction()}
+${util.sql.phonetic_functions.createMetaphoneFunction()}
+${util.sql.phonetic_functions.createDoubleMetaphoneFunction()}
+${util.sql.phonetic_functions.createNysiisFunction()}
+
+-- Execute tests for Soundex
+CREATE TEMP TABLE soundex_test_results AS (
+  SELECT
+    original_string,
+    expected_soundex,
+    SOUNDEX(original_string) AS actual_soundex,
+    SOUNDEX(original_string) = expected_soundex AS passed
+  FROM phonetic_test_cases
+);
+
+-- Execute tests for Metaphone
+CREATE TEMP TABLE metaphone_test_results AS (
+  SELECT
+    original_string,
+    expected_metaphone,
+    METAPHONE(original_string) AS actual_metaphone,
+    METAPHONE(original_string) = expected_metaphone AS passed
+  FROM phonetic_test_cases
+);
+
+-- Execute tests for Double Metaphone
+CREATE TEMP TABLE double_metaphone_test_results AS (
+  SELECT
+    original_string,
+    expected_double_metaphone,
+    DOUBLE_METAPHONE(original_string) AS actual_double_metaphone,
+    DOUBLE_METAPHONE(original_string) = expected_double_metaphone AS passed
+  FROM phonetic_test_cases
+);
+
+-- Execute tests for NYSIIS
+CREATE TEMP TABLE nysiis_test_results AS (
+  SELECT
+    original_string,
+    expected_nysiis,
+    NYSIIS(original_string) AS actual_nysiis,
+    NYSIIS(original_string) = expected_nysiis AS passed
+  FROM phonetic_test_cases
+);
+
+-- Report Soundex test results
+SELECT
+  'Soundex' AS test_name,
+  original_string,
+  expected_soundex,
+  actual_soundex,
+  passed,
+  CASE 
+    WHEN passed THEN 'PASS'
+    ELSE 'FAIL - Expected ' || expected_soundex || ', got ' || actual_soundex
+  END AS result
+FROM soundex_test_results
+ORDER BY passed, original_string;
+
+-- Report Metaphone test results
+SELECT
+  'Metaphone' AS test_name,
+  original_string,
+  expected_metaphone,
+  actual_metaphone,
+  passed,
+  CASE 
+    WHEN passed THEN 'PASS'
+    ELSE 'FAIL - Expected ' || expected_metaphone || ', got ' || actual_metaphone
+  END AS result
+FROM metaphone_test_results
+ORDER BY passed, original_string;
+
+-- Report Double Metaphone test results
+SELECT
+  'Double Metaphone' AS test_name,
+  original_string,
+  expected_double_metaphone,
+  actual_double_metaphone,
+  passed,
+  CASE 
+    WHEN passed THEN 'PASS'
+    ELSE 'FAIL - Expected ' || expected_double_metaphone || ', got ' || actual_double_metaphone
+  END AS result
+FROM double_metaphone_test_results
+ORDER BY passed, original_string;
+
+-- Report NYSIIS test results
+SELECT
+  'NYSIIS' AS test_name,
+  original_string,
+  expected_nysiis,
+  actual_nysiis,
+  passed,
+  CASE 
+    WHEN passed THEN 'PASS'
+    ELSE 'FAIL - Expected ' || expected_nysiis || ', got ' || actual_nysiis
+  END AS result
+FROM nysiis_test_results
+ORDER BY passed, original_string;
+
+-- Summary of test results
+SELECT
+  'Phonetic Function Tests Summary' AS test_suite,
+  COUNT(*) AS total_tests,
+  COUNTIF(passed) AS passed_tests,
+  ROUND(COUNTIF(passed) / COUNT(*) * 100, 2) AS pass_rate
+FROM (
+  SELECT passed FROM soundex_test_results
+  UNION ALL
+  SELECT passed FROM metaphone_test_results
+  UNION ALL
+  SELECT passed FROM double_metaphone_test_results
+  UNION ALL
+  SELECT passed FROM nysiis_test_results
+); 

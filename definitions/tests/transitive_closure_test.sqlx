@@ -1,0 +1,63 @@
+config {
+  type: "test",
+  description: "Test of transitive closure for finding record clusters",
+  tags: ["test", "matching", "clustering"],
+  dependencies: []
+}
+
+// Import the matcher
+const matcher = require("../../includes/matcher");
+
+-- Create test match data with transitive relationships
+-- A->B, B->C, C->D creates A-B-C-D cluster
+-- E->F, G->F creates E-F-G cluster
+-- H has no match
+CREATE OR REPLACE TEMPORARY TABLE test_matches AS
+SELECT * FROM (
+  SELECT 'A' AS source_id, 'B' AS target_id
+  UNION ALL
+  SELECT 'B' AS source_id, 'C' AS target_id
+  UNION ALL
+  SELECT 'C' AS source_id, 'D' AS target_id
+  UNION ALL
+  SELECT 'E' AS source_id, 'F' AS target_id
+  UNION ALL
+  SELECT 'G' AS source_id, 'F' AS target_id
+);
+
+-- Run transitive closure
+${
+  matcher.findClusters({
+    matchesTable: 'test_matches',
+    outputTable: 'test_clusters',
+    maxIterations: 5
+  })
+}
+
+-- Verify clustering results
+SELECT
+  CASE
+    -- Check cluster count is correct
+    WHEN (SELECT COUNT(*) FROM test_clusters) != 2 THEN 'FAIL: Should find 2 clusters'
+    
+    -- Check first cluster (A-B-C-D) has 4 members
+    WHEN NOT EXISTS (
+      SELECT 1 FROM test_clusters 
+      WHERE array_length(cluster_members) = 4
+      AND 'A' IN UNNEST(cluster_members)
+      AND 'B' IN UNNEST(cluster_members)
+      AND 'C' IN UNNEST(cluster_members)
+      AND 'D' IN UNNEST(cluster_members)
+    ) THEN 'FAIL: First cluster (A-B-C-D) not correctly identified'
+    
+    -- Check second cluster (E-F-G) has 3 members
+    WHEN NOT EXISTS (
+      SELECT 1 FROM test_clusters
+      WHERE array_length(cluster_members) = 3
+      AND 'E' IN UNNEST(cluster_members)
+      AND 'F' IN UNNEST(cluster_members)
+      AND 'G' IN UNNEST(cluster_members)
+    ) THEN 'FAIL: Second cluster (E-F-G) not correctly identified'
+    
+    ELSE 'PASS: Transitive closure correctly found both clusters'
+  END AS clustering_test;

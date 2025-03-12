@@ -1,0 +1,79 @@
+config {
+  type: "table",
+  description: "Final match results with confidence scores and DOB appends",
+  schema: "onpointdata",
+  name: "tmp_andrew_table_matches",
+  dependencies: ["intermediate/blocking/blocking_keys"],
+  bigquery: {
+    partitionBy: "DATE(match_timestamp)",
+    clusterBy: ["match_confidence_tier", "has_dob_append"]
+  }
+}
+
+-- Import the matching system and configuration
+const matchingSystem = require("includes/matching_system");
+const semanticTypes = require("includes/semantic_types");
+const config = require("includes/config");
+
+-- Define the target table for matching (this would be your reference data with DOB)
+const TARGET_TABLE = "local-dimension-296708.trustfinancial.consumer2022q4_voter_gold";
+
+-- Define field mappings for source and target
+const sourceFields = {
+  firstName: "standardized_first_name",
+  lastName: "standardized_last_name",
+  address: "Residence_Addresses_AddressLine",
+  city: "standardized_city",
+  state: "standardized_state",
+  zipCode: "standardized_zip"
+};
+
+const targetFields = {
+  firstName: "FIRST_NAME",
+  lastName: "LAST_NAME",
+  address: "PERSONAL_ADDRESS",
+  city: "PERSONAL_CITY",
+  state: "PERSONAL_STATE",
+  zipCode: "PERSONAL_ZIP",
+  dateOfBirth: "DATE_OF_BIRTH" // This is the field we want to append
+};
+
+-- Generate the matching SQL
+WITH matches AS (
+  ${matchingSystem.generateMatchingSql(
+    ref("intermediate/blocking/blocking_keys"),
+    TARGET_TABLE,
+    sourceFields,
+    targetFields,
+    { minimumConfidence: config.CONFIDENCE.MINIMUM }
+  )}
+)
+
+SELECT
+  -- Source record identifiers
+  s.FirstNameLastName,
+  s.Residence_Addresses_AddressLine,
+  s.Residence_Addresses_City,
+  s.Residence_Addresses_State,
+  s.Residence_Addresses_Zip,
+  
+  -- Target record fields we want to append
+  t.DATE_OF_BIRTH,
+  
+  -- Match metadata
+  match_confidence,
+  CASE
+    WHEN match_confidence >= ${config.CONFIDENCE.HIGH} THEN 'HIGH'
+    WHEN match_confidence >= ${config.CONFIDENCE.MEDIUM} THEN 'MEDIUM'
+    WHEN match_confidence >= ${config.CONFIDENCE.LOW} THEN 'LOW'
+    ELSE 'MINIMUM'
+  END AS match_confidence_tier,
+  
+  -- Append status
+  t.DATE_OF_BIRTH IS NOT NULL AS has_dob_append,
+  
+  -- Metadata
+  CURRENT_TIMESTAMP() AS match_timestamp
+
+FROM matches
+ORDER BY match_confidence DESC 

@@ -1,5 +1,7 @@
-// includes/matching_functions.js
+a// includes/matching_functions.js
 // Core reusable functions for the record linkage system
+
+const { semanticTypeMap } = require('./semantic_types');
 
 /**
  * Returns a standardized version of the input string for more consistent matching
@@ -92,14 +94,17 @@ function calculateConfidenceScore(sourceRecord, targetRecord, weights, threshold
   let totalWeight = 0;
   let weightedScore = 0;
   const fieldScores = {};
-  
+
   for (const field of fields) {
     if (sourceRecord[field] && targetRecord[field]) {
-      const similarity = jaroWinkler(standardize(sourceRecord[field], field), 
+      // Get semantic type for the field, default to field name if not in map
+      const semanticType = semanticTypeMap[field] ? field : field; // Placeholder for actual logic
+
+      const similarity = jaroWinkler(standardize(sourceRecord[field], field),
                                     standardize(targetRecord[field], field));
-      
+
       fieldScores[field] = similarity;
-      
+
       // Only count fields that meet minimum threshold
       if (similarity >= thresholds[field]) {
         weightedScore += similarity * weights[field];

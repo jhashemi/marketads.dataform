@@ -1,0 +1,134 @@
+config {
+  type: "table",
+  name: "matched_addresses",
+  description: "Matches customer records with address standardization for improved accuracy",
+  columns: {
+    source_id: "Source record ID",
+    target_id: "Target record ID",
+    confidence: "Match confidence score (0-1)",
+    tier: "Match quality tier (HIGH, MEDIUM, LOW)",
+    first_name_score: "First name match score",
+    last_name_score: "Last name match score",
+    address_score: "Standardized address match score",
+    city_score: "City match score", 
+    state_score: "State match score",
+    zip_score: "ZIP code match score"
+  },
+  tags: ["matching", "address_data"]
+}
+
+js {
+  // Import the SQL generation utilities
+  const { generateMatchingPipeline, standardizeAddressSql } = require("../includes/sql/similarity_functions");
+  
+  // Define the field mappings between source and target tables
+  const fieldMappings = [
+    {
+      sourceField: "first_name",
+      targetField: "firstname",
+      type: "firstName",
+      weight: 1.0
+    },
+    {
+      sourceField: "last_name",
+      targetField: "lastname",
+      type: "lastName",
+      weight: 1.0
+    },
+    {
+      sourceField: "address_line1",
+      targetField: "street_address",
+      type: "address",
+      weight: 2.0
+    },
+    {
+      sourceField: "city",
+      targetField: "city",
+      type: "text",
+      weight: 1.0
+    },
+    {
+      sourceField: "state",
+      targetField: "state_province",
+      type: "text",
+      weight: 0.5
+    },
+    {
+      sourceField: "postal_code",
+      targetField: "zip",
+      type: "text",
+      weight: 1.5
+    }
+  ];
+  
+  // Define matching options with ZIP code blocking for performance
+  const matchOptions = {
+    thresholds: {
+      high: 0.8,
+      medium: 0.6,
+      low: 0.4
+    },
+    blocking: {
+      field: {
+        source: "postal_code",
+        target: "zip"
+      },
+      method: "prefix",
+      length: 3  // First 3 digits of ZIP code (geographical area)
+    }
+  };
+  
+  // Generate standardized address CTE
+  const addressStandardization = `
+    -- First standardize addresses in both tables
+    WITH standardized_source AS (
+      SELECT
+        id,
+        first_name,
+        last_name,
+        ${standardizeAddressSql('address_line1')} AS std_address,
+        city,
+        state,
+        postal_code
+      FROM \`{{ ref("source_customers") }}\`
+    ),
+    
+    standardized_target AS (
+      SELECT
+        id,
+        firstname,
+        lastname,
+        ${standardizeAddressSql('street_address')} AS std_address,
+        city,
+        state_province,
+        zip
+      FROM \`{{ ref("target_customers") }}\`
+    )
+  `;
+  
+  // Generate the matching SQL with customizations for address data
+  const matchingSQL = generateMatchingPipeline(
+    "standardized_source", 
+    "standardized_target", 
+    // Update field mappings to use standardized address fields
+    fieldMappings.map(mapping => 
+      mapping.sourceField === 'address_line1' && mapping.targetField === 'street_address' 
+        ? {...mapping, sourceField: 'std_address', targetField: 'std_address'}
+        : mapping
+    ),
+    matchOptions
+  );
+  
+  // Return the complete SQL with address standardization
+  return `
+    ${addressStandardization}
+    
+    ${matchingSQL.replace(
+      'FROM \`{{ ref("standardized_source") }}\` s', 
+      'FROM standardized_source s'
+    ).replace(
+      'FROM \`{{ ref("standardized_target") }}\` t',
+      'FROM standardized_target t'
+    )}
+  `;
+} 

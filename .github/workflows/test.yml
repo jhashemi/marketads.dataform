@@ -1,0 +1,125 @@
+name: Test Record Matching System
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Compile Dataform project
+      run: npx @dataform/cli compile
+    
+    - name: Set up Google Cloud SDK
+      if: github.event_name != 'pull_request'
+      uses: google-github-actions/auth@v1
+      with:
+        workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ secrets.SERVICE_ACCOUNT }}
+    
+    - name: Set up Google Cloud SDK (PR)
+      if: github.event_name == 'pull_request'
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: Setup Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+    
+    - name: Run unit tests
+      run: |
+        mkdir -p test_reports
+        dataform run \
+          --project-id=${{ secrets.GCP_PROJECT_ID }} \
+          --actions='tag:test AND tag:unit'
+      
+    - name: Run integration tests
+      run: |
+        dataform run \
+          --project-id=${{ secrets.GCP_PROJECT_ID }} \
+          --actions='tag:test AND tag:integration'
+    
+    - name: Run end-to-end tests
+      run: |
+        dataform run \
+          --project-id=${{ secrets.GCP_PROJECT_ID }} \
+          --actions='tag:test AND tag:e2e'
+    
+    - name: Run JavaScript tests
+      run: |
+        node includes/validation/test_runner.js
+      env:
+        BIGQUERY_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        BIGQUERY_DATASET_ID: test_dataset
+        TEST_OUTPUT_DIR: ./test_reports
+    
+    - name: Generate test report
+      run: |
+        node scripts/generate_test_report.js
+      env:
+        REPORT_OUTPUT_PATH: ./test_reports/test_report.html
+    
+    - name: Upload test report
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-report
+        path: ./test_reports/test_report.html
+    
+    - name: Publish test summary
+      uses: actions/github-script@v6
+      if: always()
+      with:
+        script: |
+          const fs = require('fs');
+          try {
+            const summaryPath = './test_reports/summary.json';
+            if (!fs.existsSync(summaryPath)) {
+              console.log('No summary file found');
+              return;
+            }
+            const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+            const totalTests = summary.totalTests || 0;
+            const passedTests = summary.passedTests || 0;
+            const failedTests = summary.failedTests || 0;
+            const testCoverage = summary.coverage || 0;
+            
+            const failureMessage = failedTests > 0 ? `❌ ${failedTests} test(s) failed.` : '';
+            
+            const message = `
+            ## Test Summary
+            
+            ✅ ${passedTests} / ${totalTests} tests passed (${testCoverage}% coverage)
+            
+            ${failureMessage}
+            
+            [Full Test Report](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
+          } catch (error) {
+            console.error('Error publishing test summary:', error);
+          } 

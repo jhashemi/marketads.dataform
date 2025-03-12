@@ -1,0 +1,141 @@
+config {
+  type: "table",
+  name: "waterfall_customer_matching",
+  description: "Customer matching using the waterfall strategy with prioritized reference tables",
+  columns: {
+    customer_id: "Unique customer identifier",
+    reference_id: "Reference record identifier",
+    match_key: "Key used for matching",
+    data_source: "Source of the match (reference table)",
+    match_score: "Confidence score of the match",
+    confidence: "Confidence level (HIGH, MEDIUM, LOW, NONE)",
+    email_verified: "Email from verified source",
+    phone_verified: "Phone from verified source",
+    customer_since: "Customer since date from best available source",
+    match_type: "Type of match (DETERMINISTIC, PROBABILISTIC, UNMATCHED)"
+  },
+  tags: ["matching", "waterfall", "customer"]
+}
+
+/* 
+ * Waterfall Customer Matching
+ *
+ * This implementation demonstrates the waterfall matching approach where
+ * customer records are matched against multiple reference tables in priority order.
+ * The waterfall approach ensures that matches from higher priority sources
+ * take precedence over lower priority sources.
+ */
+
+const waterfallPipeline = require('/includes/pipeline/waterfall_pipeline');
+
+// Define reference tables in priority order
+const referenceTables = [
+  { 
+    id: 'verified_customers', 
+    table: 'reference_data.verified_customers', 
+    priority: 1, 
+    name: 'VERIFIED',
+    keyField: 'customer_id',
+    confidenceMultiplier: 1.2,
+    requiredFields: ['email', 'phone']
+  },
+  { 
+    id: 'historical_customers', 
+    table: 'reference_data.historical_customers', 
+    priority: 2, 
+    name: 'HISTORICAL',
+    keyField: 'customer_id',
+    confidenceMultiplier: 1.0,
+    requiredFields: ['email']
+  },
+  { 
+    id: 'third_party_data', 
+    table: 'reference_data.third_party_customers', 
+    priority: 3, 
+    name: 'THIRD_PARTY',
+    keyField: 'external_id',
+    confidenceMultiplier: 0.8
+  }
+];
+
+// Define field mappings for each reference table
+const fieldMappings = {
+  'verified_customers': [
+    { sourceField: 'email', targetField: 'email_verified' },
+    { sourceField: 'phone', targetField: 'phone_verified' },
+    { sourceField: 'customer_since_date', targetField: 'customer_since' },
+    { sourceField: 'customer_id', targetField: 'verified_customer_id' }
+  ],
+  'historical_customers': [
+    { sourceField: 'email_address', targetField: 'email_historical' },
+    { sourceField: 'phone_number', targetField: 'phone_historical' },
+    { sourceField: 'first_seen_date', targetField: 'customer_since' },
+    { sourceField: 'legacy_id', targetField: 'historical_customer_id' }
+  ],
+  'third_party_data': [
+    { sourceField: 'contact_email', targetField: 'email_external' },
+    { sourceField: 'contact_phone', targetField: 'phone_external' },
+    { sourceField: 'external_id', targetField: 'third_party_id' }
+  ]
+};
+
+// Define matching rules for each reference table
+const matchingRules = {
+  'verified_customers': {
+    blocking: [
+      { sourceField: 'email', targetField: 'email', exact: true }
+    ],
+    scoring: [
+      { sourceField: 'first_name', targetField: 'first_name', method: 'jaro_winkler', weight: 1.5 },
+      { sourceField: 'last_name', targetField: 'last_name', method: 'jaro_winkler', weight: 2.0 },
+      { sourceField: 'zip_code', targetField: 'zip_code', method: 'exact', weight: 1.0 }
+    ]
+  },
+  'historical_customers': {
+    blocking: [
+      { sourceField: 'email', targetField: 'email_address', exact: true }
+    ],
+    scoring: [
+      { sourceField: 'first_name', targetField: 'first_name', method: 'jaro_winkler', weight: 1.5 },
+      { sourceField: 'last_name', targetField: 'last_name', method: 'jaro_winkler', weight: 2.0 },
+      { sourceField: 'address', targetField: 'address', method: 'token', weight: 1.0 }
+    ]
+  },
+  'third_party_data': {
+    blocking: [
+      { 
+        condition: `
+          (s.email = t.contact_email OR 
+           s.phone = t.contact_phone OR
+           s.zip_code = t.postal_code)
+        `
+      }
+    ],
+    scoring: [
+      { sourceField: 'first_name', targetField: 'first_name', method: 'jaro_winkler', weight: 1.5 },
+      { sourceField: 'last_name', targetField: 'last_name', method: 'jaro_winkler', weight: 2.0 },
+      { sourceField: 'address', targetField: 'address', method: 'token', weight: 0.8 }
+    ]
+  }
+};
+
+// Define the pipeline configuration
+const pipelineConfig = {
+  sourceTable: 'sources.customer_data',
+  referenceTables,
+  fieldMappings,
+  matchingRules,
+  thresholds: {
+    high: 0.85,
+    medium: 0.70,
+    low: 0.55
+  },
+  outputTable: 'waterfall_customer_matching',
+  includeUnmatched: true
+};
+
+// Generate the SQL for the waterfall matching pipeline
+const waterfallSql = waterfallPipeline.generateWaterfallPipeline(pipelineConfig);
+
+// Execute the generated SQL
+${waterfallSql} 

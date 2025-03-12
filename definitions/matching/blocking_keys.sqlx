@@ -1,0 +1,101 @@
+config {
+  type: "table",
+  name: "customer_blocking_keys",
+  description: "Generates multiple blocking keys for customer data to enable efficient matching",
+  columns: {
+    customer_id: "Customer record ID",
+    blocking_key: "Blocking key for partitioning data",
+    key_type: "Type of blocking key generated"
+  },
+  tags: ["matching", "blocking", "performance"]
+}
+
+js {
+  // Import the blocking key generation utilities
+  const { blockingKeySql } = require("../includes/sql/similarity_functions");
+  const { generatePhoneticBlocking } = require("../includes/sql/phonetic_functions");
+  
+  // Define which blocking strategies to use
+  const blockingStrategies = [
+    // Name-based blocking
+    {
+      field: "full_name",
+      methods: [
+        { name: "soundex", displayName: "SOUNDEX_NAME" },
+        { name: "prefix", displayName: "NAME_PREFIX", options: { length: 3 } }
+      ]
+    },
+    // Email-based blocking
+    {
+      field: "email",
+      methods: [
+        { name: "email_domain", displayName: "EMAIL_DOMAIN" },
+        { name: "exact", displayName: "EXACT_EMAIL" }
+      ]
+    },
+    // Phone-based blocking
+    {
+      field: "phone",
+      methods: [
+        { name: "last4", displayName: "PHONE_LAST4" },
+      ]
+    },
+    // Date of birth blocking
+    {
+      field: "date_of_birth",
+      methods: [
+        { name: "year", displayName: "BIRTH_YEAR" },
+      ]
+    },
+    // Address-based blocking
+    {
+      field: "postal_code",
+      methods: [
+        { name: "prefix", displayName: "ZIP3", options: { length: 3 } },
+        { name: "exact", displayName: "EXACT_ZIP" }
+      ]
+    }
+  ];
+  
+  // Generate SQL for each blocking strategy
+  const blockingKeySQL = blockingStrategies.map(strategy => {
+    const { field, methods } = strategy;
+    
+    return methods.map(method => {
+      const blockingSQL = blockingKeySql(`customer.${field}`, method.name, method.options);
+      
+      return `
+        -- Generate ${method.displayName} blocking keys
+        SELECT
+          customer.id as customer_id,
+          ${blockingSQL} as blocking_key,
+          '${method.displayName}' as key_type
+        FROM \`{{ ref("customer_data") }}\` as customer
+        WHERE ${blockingSQL} IS NOT NULL
+      `;
+    }).join('\nUNION ALL\n');
+  }).join('\nUNION ALL\n');
+  
+  // Combine with phonetic blocking (more complex key generation)
+  return `
+    -- Generate multiple blocking keys to enable efficient matching
+    
+    -- Standard blocking keys based on direct field values
+    WITH standard_blocking_keys AS (
+      ${blockingKeySQL}
+    ),
+    
+    -- Advanced phonetic blocking for names
+    phonetic_blocking_keys AS (
+      ${generatePhoneticBlocking('customer_data', 'full_name')}
+    )
+    
+    -- Combine all blocking keys
+    SELECT * FROM standard_blocking_keys
+    UNION ALL
+    SELECT * FROM phonetic_blocking_keys
+    
+    -- Remove any empty keys
+    WHERE blocking_key IS NOT NULL AND TRIM(blocking_key) != ''
+  `;
+} 

@@ -1,0 +1,54 @@
+config {
+  type: "operations",
+  description: "Test suite for address standardization functions",
+  tags: ["test", "address_standardization"]
+}
+
+-- Create temporary tables for test cases
+CREATE TEMP TABLE address_test_cases AS (
+  SELECT * FROM UNNEST([
+    STRUCT("123 Main St" AS original_address, "123 MAIN STREET" AS expected_standardized),
+    STRUCT("456 Oak Avenue" AS original_address, "456 OAK AVE" AS expected_standardized),
+    STRUCT("789 Pine Rd." AS original_address, "789 PINE ROAD" AS expected_standardized),
+    STRUCT("321 Maple Dr" AS original_address, "321 MAPLE DRIVE" AS expected_standardized),
+    STRUCT("555 Cedar Ln" AS original_address, "555 CEDAR LANE" AS expected_standardized),
+    STRUCT("888 E Elm Street" AS original_address, "888 EAST ELM STREET" AS expected_standardized),
+    STRUCT("777 NW 5th Ave." AS original_address, "777 NORTHWEST 5TH AVENUE" AS expected_standardized),
+    STRUCT("999 S. Broadway Blvd" AS original_address, "999 SOUTH BROADWAY BOULEVARD" AS expected_standardized)
+  ])
+);
+
+-- Import address standardization function
+${util.sql.similarity_functions.standardizeAddressSql("original_address")}
+
+-- Execute tests for address standardization
+CREATE TEMP TABLE address_standardization_results AS (
+  SELECT
+    original_address,
+    expected_standardized,
+    CAST(${util.sql.similarity_functions.standardizeAddressSql("original_address")} AS STRING) AS actual_standardized,
+    CAST(${util.sql.similarity_functions.standardizeAddressSql("original_address")} AS STRING) = expected_standardized AS passed
+  FROM address_test_cases
+);
+
+-- Report address standardization test results
+SELECT
+  'Address Standardization' AS test_name,
+  original_address,
+  expected_standardized,
+  actual_standardized,
+  passed,
+  CASE 
+    WHEN passed THEN 'PASS'
+    ELSE 'FAIL - Expected "' || expected_standardized || '", got "' || actual_standardized || '"'
+  END AS result
+FROM address_standardization_results
+ORDER BY passed, original_address;
+
+-- Summary of test results
+SELECT
+  'Address Standardization Tests Summary' AS test_suite,
+  COUNT(*) AS total_tests,
+  COUNTIF(passed) AS passed_tests,
+  ROUND(COUNTIF(passed) / COUNT(*) * 100, 2) AS pass_rate
+FROM address_standardization_results; 

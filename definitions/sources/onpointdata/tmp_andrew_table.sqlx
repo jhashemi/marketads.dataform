@@ -1,0 +1,10 @@
+config {
+  type: "declaration",
+  description: "Source table containing records to be matched",
+  database: "local-dimension-296708",
+  schema: "onpointdata",
+  name: "tmp_andrew_table"
+}
+
+-- This file declares the source table that will be used as input for the matching process
+-- The table contains customer records with name, address, and other identifying information 

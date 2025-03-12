@@ -1,0 +1,84 @@
+config {
+  type: "test",
+  description: "Test of incremental record matching",
+  tags: ["test", "matching", "incremental"],
+  dependencies: []
+}
+
+// Import the matcher
+const matcher = require("../../includes/matcher");
+
+-- Set up initial test data
+CREATE OR REPLACE TEMPORARY TABLE test_source_data AS
+SELECT * FROM (
+  SELECT 'S1' AS id, 'John' AS first_name, 'Smith' AS last_name, TIMESTAMP '2023-01-01' AS updated_at
+  UNION ALL
+  SELECT 'S2' AS id, 'Jane' AS first_name, 'Doe' AS last_name, TIMESTAMP '2023-01-01' AS updated_at
+);
+
+CREATE OR REPLACE TEMPORARY TABLE test_target_data AS
+SELECT * FROM (
+  SELECT 'T1' AS id, 'John' AS firstname, 'Smith' AS lastname, '1980-01-15' AS dob
+  UNION ALL
+  SELECT 'T2' AS id, 'Jane' AS firstname, 'Doe' AS lastname, '1985-05-20' AS dob
+);
+
+-- Run initial matching
+${
+  matcher.waterfall({
+    sourceTable: 'test_source_data',
+    targetTable: 'test_target_data',
+    fieldMappings: {
+      firstName: {source: "first_name", target: "firstname"},
+      lastName: {source: "last_name", target: "lastname"}
+    },
+    appendFields: ["dob"],
+    outputTable: 'test_match_results_base'
+  })
+}
+
+-- Verify initial match results
+SELECT 
+  CASE
+    WHEN (SELECT COUNT(*) FROM test_match_results_base) != 2 THEN 'FAIL: Initial matching should find 2 matches'
+    ELSE 'PASS: Initial matching found expected matches'
+  END AS initial_match_check;
+
+-- Add a new record and update an existing one
+CREATE OR REPLACE TEMPORARY TABLE test_source_data_updated AS
+SELECT * FROM (
+  SELECT 'S1' AS id, 'John' AS first_name, 'Smith' AS last_name, TIMESTAMP '2023-01-01' AS updated_at
+  UNION ALL
+  SELECT 'S2' AS id, 'Jane' AS first_name, 'Doe-Updated' AS last_name, TIMESTAMP '2023-01-15' AS updated_at
+  UNION ALL
+  SELECT 'S3' AS id, 'Michael' AS first_name, 'Brown' AS last_name, TIMESTAMP '2023-01-15' AS updated_at
+);
+
+-- Run incremental matching
+${
+  matcher.incremental({
+    sourceTable: 'test_source_data_updated',
+    targetTable: 'test_target_data',
+    fieldMappings: {
+      firstName: {source: "first_name", target: "firstname"},
+      lastName: {source: "last_name", target: "lastname"}
+    },
+    appendFields: ["dob"],
+    outputTable: 'test_match_results',
+    incrementalField: 'updated_at',
+    lookbackDays: 30
+  })
+}
+
+-- Verify incremental matching results
+SELECT 
+  CASE
+    WHEN (SELECT COUNT(*) FROM test_match_results) != 3 THEN 'FAIL: Should have 3 total records'
+    WHEN (SELECT COUNT(*) FROM test_match_results WHERE source_id = 'S1' AND reference_id = 'T1') != 1 
+         THEN 'FAIL: S1 should still match T1'
+    WHEN (SELECT COUNT(*) FROM test_match_results WHERE source_id = 'S2' AND reference_id = 'T2') != 1
+         THEN 'FAIL: S2 should still match T2 despite name update'
+    WHEN (SELECT COUNT(*) FROM test_match_results WHERE source_id = 'S3' AND reference_id IS NOT NULL) != 0
+         THEN 'FAIL: S3 should have no match'
+    ELSE 'PASS: Incremental matching correctly processed updates and new records'
+  END AS incremental_match_check;

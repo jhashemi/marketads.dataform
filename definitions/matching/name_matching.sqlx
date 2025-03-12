@@ -1,0 +1,84 @@
+config {
+  type: "table",
+  name: "matched_customers",
+  description: "Matches customer records across source and target tables using name and contact information",
+  columns: {
+    source_id: "Source record ID",
+    target_id: "Target record ID",
+    confidence: "Match confidence score (0-1)",
+    tier: "Match quality tier (HIGH, MEDIUM, LOW)",
+    first_name_score: "First name match score",
+    last_name_score: "Last name match score",
+    email_score: "Email match score",
+    phone_score: "Phone match score"
+  },
+  tags: ["matching", "customer_data"]
+}
+
+js {
+  // Import the SQL generation utilities
+  const { generateMatchingPipeline } = require("../includes/sql/similarity_functions");
+  const { createSoundexFunction, createMetaphoneFunction } = require("../includes/sql/phonetic_functions");
+  
+  // Define the field mappings between source and target tables
+  const fieldMappings = [
+    {
+      sourceField: "first_name",
+      targetField: "firstname",
+      type: "firstName",
+      weight: 1.5
+    },
+    {
+      sourceField: "last_name",
+      targetField: "lastname",
+      type: "lastName",
+      weight: 2.0
+    },
+    {
+      sourceField: "email",
+      targetField: "email_address",
+      type: "email",
+      weight: 2.5
+    },
+    {
+      sourceField: "phone",
+      targetField: "phone_number",
+      type: "phone",
+      weight: 1.0
+    }
+  ];
+  
+  // Define matching options
+  const matchOptions = {
+    thresholds: {
+      high: 0.85,
+      medium: 0.65,
+      low: 0.45
+    },
+    blocking: {
+      field: {
+        source: "email",
+        target: "email_address"
+      },
+      method: "email_domain"
+    }
+  };
+  
+  // Generate the matching SQL
+  const matchingSQL = generateMatchingPipeline(
+    "source_customers", 
+    "target_customers", 
+    fieldMappings, 
+    matchOptions
+  );
+  
+  // Return the complete SQL (with phonetic functions included)
+  return `
+    -- Create phonetic functions for enhanced matching
+    ${createSoundexFunction()}
+    ${createMetaphoneFunction()}
+    
+    -- Execute the matching pipeline
+    ${matchingSQL}
+  `;
+} 

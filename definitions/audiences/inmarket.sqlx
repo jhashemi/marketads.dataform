@@ -5,4 +5,10 @@ config {
         clusterBy: ['sha256_lc_hem', 'up_id', 'dt','category']
     }
 }
-select dt,sha256_lc_hem, array_agg(struct(parent,category,subcategory,topic) limit 300) as intents from ${ref("onpointdata","staging_inmarket")} group by dt,sha256_lc_hem
+-- This query aggregates inmarket intents by user and date
+select 
+  dt,
+  sha256_lc_hem, 
+  array_agg(struct(parent,category,subcategory,topic) limit 300) as intents 
+from ${ref("onpointdata","staging_inmarket")} 
+group by dt,sha256_lc_hem

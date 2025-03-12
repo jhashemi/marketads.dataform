@@ -15,9 +15,32 @@ config {
       topic: "Taxonomy Subcategory Topic (Intent)",
     }
 }
+
+-- This query joins raw inmarket data with taxonomy information
+-- and uses a self-reference to maintain historical data
 select
-  PARSE_DATE('%Y%m%d',i.dt) as dt,sha256_lc_hem,up_id,intent_strength,b.parent,b.category,b.subcategory,b.topic
-from ${ref('staging_inmarket_raw')} i inner join ${ref('inmarket_taxonomy_1_3')} b on i.intent=b.topic_id
+  PARSE_DATE('%Y%m%d',i.dt) as dt,
+  sha256_lc_hem,
+  up_id,
+  intent_strength,
+  b.parent,
+  b.category,
+  b.subcategory,
+  b.topic
+from ${ref('onpointdata', 'staging_inmarket_raw')} i 
+inner join ${ref('onpointdata', 'inmarket_taxonomy_1_3')} b 
+  on i.intent=b.topic_id
 
 union distinct
-select dt,sha256_lc_hem,up_id,intent_strength,parent,category,subcategory,topic from ${self()}
+
+-- Self-reference to maintain historical data
+select 
+  dt,
+  sha256_lc_hem,
+  up_id,
+  intent_strength,
+  parent,
+  category,
+  subcategory,
+  topic 
+from ${self()}
