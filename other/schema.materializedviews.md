@@ -1,6 +1,6 @@
 # MATERIALIZED VIEWS SCHEMA
 
-```CREATE MATERIALIZED VIEW `local-dimension-296708.onpointdata.email_rdids`
+CREATE MATERIALIZED VIEW `local-dimension-296708.onpointdata.email_rdids`
 CLUSTER BY email
 OPTIONS(
   allow_non_incremental_definition=true,

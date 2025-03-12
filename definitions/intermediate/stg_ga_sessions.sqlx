@@ -1,0 +1,43 @@
+config { 
+  type: "view",
+  schema: "onpointdata",
+  description: "Standardized and cleaned Google Analytics session data",
+  dependencies: [
+    "google_analytics"
+  ]
+}
+
+-- Reference JavaScript utility modules
+const { functions } = require("marketads.dataform");
+const { semanticTypes } = require("marketads.dataform");
+
+WITH source_data AS (
+  SELECT * FROM ${ref("google_analytics")}
+)
+
+SELECT
+  -- Clean and standardize identifier fields
+  ${functions.transformStringColumn("client_id")},
+  ${functions.transformStringColumn("user_id")},
+  
+  -- Convert and clean session data
+  ${functions.dataCastInt("session_id")},
+  ${functions.dataCastInt("session_count")},
+  
+  -- Clean and standardize traffic source data
+  ${functions.transformStringColumn("source")},
+  ${functions.transformStringColumn("medium")},
+  ${functions.transformStringColumn("campaign")},
+  
+  -- Cast metrics to correct data types
+  ${functions.dataCastInt("pageviews")},
+  ${functions.dataCastInt("sessions")},
+  ${functions.dataCastBool("is_new_user")},
+  
+  -- Add geospatial indexing
+  ${functions.toH3IndexPartitionKey("latitude", "longitude")} AS geo_index,
+  
+  -- Keep original timestamps
+  event_date,
+  event_timestamp
+FROM source_data 

@@ -2,6 +2,8 @@
 
 const ExactMatchStrategy = require("./match_strategies/exact_match_strategy");
 const ZipSoundexLastNameFirstNameStrategy = require("./match_strategies/zip_soundex_lastname_firstname_strategy");
+const WaterfallMatchStrategy = require("./match_strategies/waterfall_match_strategy");
+const MultiTableWaterfallStrategy = require("./match_strategies/multi_table_waterfall_strategy");
 // ... import other strategies ...
 
 const docs = require("/includes/docs"); // Import column information from docs.js
@@ -43,6 +45,48 @@ class MatchStrategyFactory {
 
     throw new Error(`No strategy found for columns ${col1} and ${col2}`);
   }
+  
+  /**
+   * Create a waterfall matching strategy
+   * @param {Object} options - Strategy options
+   * @returns {WaterfallMatchStrategy} Waterfall strategy instance
+   */
+  createWaterfallStrategy(options = {}) {
+    return new WaterfallMatchStrategy(options);
+  }
+  
+  /**
+   * Create a multi-table waterfall matching strategy
+   * @param {Object} options - Strategy options
+   * @returns {MultiTableWaterfallStrategy} Multi-table waterfall strategy instance
+   */
+  createMultiTableWaterfallStrategy(options = {}) {
+    return new MultiTableWaterfallStrategy(options);
+  }
+  
+  /**
+   * Create a strategy by name
+   * @param {string} strategyName - Name of the strategy
+   * @param {Object} options - Strategy options
+   * @returns {MatchStrategy} Strategy instance
+   */
+  createStrategyByName(strategyName, options = {}) {
+    switch (strategyName) {
+      case 'exact':
+        return new ExactMatchStrategy(options);
+      case 'zip_soundex_lastname_firstname':
+        return new ZipSoundexLastNameFirstNameStrategy(options);
+      case 'waterfall':
+        return this.createWaterfallStrategy(options);
+      case 'multi_table_waterfall':
+        return this.createMultiTableWaterfallStrategy(options);
+      default:
+        throw new Error(`Unknown strategy name: ${strategyName}`);
+    }
+  }
 }
 
-module.exports = MatchStrategyFactory;
+// Create singleton instance
+const matchStrategyFactory = new MatchStrategyFactory();
+
+module.exports = matchStrategyFactory;

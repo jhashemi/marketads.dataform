@@ -1,8 +1,28 @@
 {
-  "name": "syntaxdata",
+  "name": "marketads-matching",
+  "version": "1.0.0",
+  "description": "Record matching and linkage system for MarketAds data",
+  "main": "index.js",
   "dependencies": {
-    "@dataform/core": "2.9.0",
-    "@dataform/cli": "^2.9.0"
-
-  }
+    "fastest-levenshtein": "^1.0.16",
+    "natural": "^6.5.0",
+    "phonetic-algorithms": "^1.0.1",
+    "string-similarity": "^4.0.4",
+    "validator": "^13.9.0",
+    "addresser": "^1.1.19",
+    "luxon": "^3.3.0",
+    "dedupe": "^4.0.1",
+    "knex": "^2.4.2",
+    "pg": "^8.11.0"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0",
+    "eslint": "^8.40.0"
+  },
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint ."
+  },
+  "author": "",
+  "license": "UNLICENSED"
 }
