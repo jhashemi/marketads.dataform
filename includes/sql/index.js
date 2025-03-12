@@ -10,6 +10,9 @@ const templates = require('./templates');
 const { SqlCompiler, compileSql, validateSql } = require('./compiler');
 const { ISqlGenerator } = require('../core/types');
 const { SqlGenerationError } = require('../core/errors');
+const stringFunctions = require('./string_functions');
+const castingFunctions = require('./casting_functions');
+const hashingFunctions = require('./hashing_functions');
 
 /**
  * SQL Generator class implementing the ISqlGenerator interface
@@ -261,5 +264,14 @@ module.exports = {
   
   // Re-export utility functions
   compileSql,
-  validateSql
-}; 
+  validateSql,
+  
+  // Re-export string functions
+  ...stringFunctions,
+  
+  // Re-export casting functions
+  ...castingFunctions,
+  
+  // Re-export hashing functions
+  ...hashingFunctions
+};

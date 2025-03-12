@@ -142,33 +142,6 @@ function validateValue(value, semanticType) {
   }
 }
 
-/**
- * Generates SQL for standardizing a field based on its semantic type
- * 
- * @param {string} fieldName - The name of the field to standardize
- * @param {string} semanticType - The semantic type to use for standardization
- * @returns {string} - SQL expression for standardizing the field
- */
-function standardizeSql(fieldName, semanticType) {
-  if (!fieldName || !semanticType) return fieldName;
-  
-  switch(semanticType) {
-    case 'email':
-      return `LOWER(TRIM(${fieldName}))`;
-    case 'firstName':
-    case 'lastName':
-    case 'fullName':
-      return `TRIM(INITCAP(${fieldName}))`;
-    case 'phoneNumber':
-      return `REGEXP_REPLACE(${fieldName}, '[^0-9]', '')`;
-    case 'zipCode':
-      return `LPAD(CAST(REGEXP_REPLACE(${fieldName}, '[^0-9]', '') AS STRING), 5, '0')`;
-    case 'address':
-      return `UPPER(REGEXP_REPLACE(TRIM(${fieldName}), '\\s+', ' '))`;
-    default:
-      return `TRIM(${fieldName})`;
-  }
-}
 
 /**
  * Gets all potential field names for a semantic type

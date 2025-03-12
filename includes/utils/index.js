@@ -12,6 +12,7 @@ const arrayUtils = require('./array');
 const objectUtils = require('./object');
 const validationUtils = require('./validation');
 const dateUtils = require('./date');
+const geospatialUtils = require('./geospatial_functions');
 
 /**
  * Exports all utility functions organized by domain
@@ -40,5 +41,10 @@ module.exports = {
   /**
    * Date manipulation utilities
    */
-  date: dateUtils
-}; 
+  date: dateUtils,
+  
+  /**
+   * Geospatial utilities
+   */
+  geospatial: geospatialUtils
+};
