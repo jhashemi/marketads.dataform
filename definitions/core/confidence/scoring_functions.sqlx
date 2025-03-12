@@ -1,0 +1,184 @@
+-- definitions/core/confidence/scoring_functions.sqlx
+config {
+  type: "operations",
+  description: "Functions for calculating confidence scores in record linkage",
+  tags: ["record_linkage", "confidence_scoring"]
+}
+
+-- Calculate string similarity using Jaro-Winkler algorithm
+-- Optimized for names and addresses
+CREATE OR REPLACE FUNCTION ${self()}.jaro_winkler_similarity(s1 STRING, s2 STRING) 
+RETURNS FLOAT64 AS (
+  -- Native BigQuery implementation using approximate string matching
+  -- Returns value between 0 and 1
+  IF(
+    s1 IS NULL OR s2 IS NULL OR LENGTH(TRIM(s1)) = 0 OR LENGTH(TRIM(s2)) = 0,
+    0,
+    IF(
+      UPPER(TRIM(s1)) = UPPER(TRIM(s2)),
+      1.0,
+      (1.0 - REGEXP_EXTRACT(CAST(ML.SIMILARITY(UPPER(TRIM(s1)), UPPER(TRIM(s2))) AS STRING), r'distance: ([0-9.]+)') / 
+        GREATEST(LENGTH(TRIM(s1)), LENGTH(TRIM(s2))))
+    )
+  )
+);
+
+-- Calculate name similarity with additional logic for common variations
+CREATE OR REPLACE FUNCTION ${self()}.name_similarity(name1 STRING, name2 STRING)
+RETURNS FLOAT64 AS (
+  CASE
+    -- Handle NULL values
+    WHEN name1 IS NULL OR name2 IS NULL THEN 0
+    
+    -- Exact match (case insensitive)
+    WHEN UPPER(TRIM(name1)) = UPPER(TRIM(name2)) THEN 1.0
+    
+    -- Handle nicknames and common variations
+    WHEN UPPER(TRIM(name1)) IN ('ROBERT', 'ROB', 'BOB', 'BOBBY') AND 
+         UPPER(TRIM(name2)) IN ('ROBERT', 'ROB', 'BOB', 'BOBBY') THEN 0.95
+    WHEN UPPER(TRIM(name1)) IN ('WILLIAM', 'WILL', 'BILL', 'BILLY') AND 
+         UPPER(TRIM(name2)) IN ('WILLIAM', 'WILL', 'BILL', 'BILLY') THEN 0.95
+    WHEN UPPER(TRIM(name1)) IN ('JAMES', 'JIM', 'JIMMY') AND 
+         UPPER(TRIM(name2)) IN ('JAMES', 'JIM', 'JIMMY') THEN 0.95
+    WHEN UPPER(TRIM(name1)) IN ('THOMAS', 'TOM', 'TOMMY') AND 
+         UPPER(TRIM(name2)) IN ('THOMAS', 'TOM', 'TOMMY') THEN 0.95
+    WHEN UPPER(TRIM(name1)) IN ('JOHN', 'JOHNNY', 'JONATHAN') AND 
+         UPPER(TRIM(name2)) IN ('JOHN', 'JOHNNY', 'JONATHAN') THEN 0.95
+    WHEN UPPER(TRIM(name1)) IN ('ELIZABETH', 'BETH', 'LIZ', 'LIZZY', 'ELIZA') AND 
+         UPPER(TRIM(name2)) IN ('ELIZABETH', 'BETH', 'LIZ', 'LIZZY', 'ELIZA') THEN 0.95
+    WHEN UPPER(TRIM(name1)) IN ('KATHERINE', 'CATHERINE', 'KATHY', 'KATE', 'KATIE') AND 
+         UPPER(TRIM(name2)) IN ('KATHERINE', 'CATHERINE', 'KATHY', 'KATE', 'KATIE') THEN 0.95
+    
+    -- Prefix match (e.g., "Rob" and "Robert")
+    WHEN LENGTH(TRIM(name1)) < LENGTH(TRIM(name2)) AND 
+         UPPER(TRIM(name1)) = SUBSTR(UPPER(TRIM(name2)), 1, LENGTH(TRIM(name1))) AND
+         LENGTH(TRIM(name1)) >= 3 THEN 0.9
+    WHEN LENGTH(TRIM(name2)) < LENGTH(TRIM(name1)) AND 
+         UPPER(TRIM(name2)) = SUBSTR(UPPER(TRIM(name1)), 1, LENGTH(TRIM(name2))) AND
+         LENGTH(TRIM(name2)) >= 3 THEN 0.9
+    
+    -- First initial matches
+    WHEN SUBSTR(UPPER(TRIM(name1)), 1, 1) = SUBSTR(UPPER(TRIM(name2)), 1, 1) THEN 0.3
+    
+    -- Use Jaro-Winkler for other cases
+    ELSE ${self()}.jaro_winkler_similarity(name1, name2)
+  END
+);
+
+-- Calculate address similarity with specialized logic for addresses
+CREATE OR REPLACE FUNCTION ${self()}.address_similarity(addr1 STRING, addr2 STRING)
+RETURNS FLOAT64 AS (
+  CASE
+    -- Handle NULL values
+    WHEN addr1 IS NULL OR addr2 IS NULL THEN 0
+    
+    -- Exact match (case insensitive)
+    WHEN UPPER(TRIM(addr1)) = UPPER(TRIM(addr2)) THEN 1.0
+    
+    -- Standardized versions match
+    WHEN ${ref("standardization.standardize_address", {input: "addr1"})} = 
+         ${ref("standardization.standardize_address", {input: "addr2"})} THEN 0.95
+    
+    -- House number matches but rest differs slightly
+    WHEN REGEXP_EXTRACT(TRIM(addr1), r'^(\d+)') = REGEXP_EXTRACT(TRIM(addr2), r'^(\d+)') 
+         AND REGEXP_EXTRACT(TRIM(addr1), r'^(\d+)') IS NOT NULL
+         AND ${self()}.jaro_winkler_similarity(addr1, addr2) > 0.8 THEN 0.9
+    
+    -- Use Jaro-Winkler for other cases with address-specific weighting
+    ELSE ${self()}.jaro_winkler_similarity(addr1, addr2) * 0.9
+  END
+);
+
+-- Calculate weighted composite score across multiple fields
+CREATE OR REPLACE FUNCTION ${self()}.calculate_weighted_score(
+  source STRUCT<
+    FirstName STRING,
+    LastName STRING,
+    AddressLine1 STRING,
+    City STRING,
+    State STRING,
+    ZipCode STRING,
+    DateOfBirth STRING,
+    PhoneNumber STRING,
+    EmailAddress STRING
+  >,
+  target STRUCT<
+    FirstName STRING,
+    LastName STRING,
+    AddressLine1 STRING,
+    City STRING,
+    State STRING,
+    ZipCode STRING,
+    DateOfBirth STRING,
+    PhoneNumber STRING,
+    EmailAddress STRING
+  >,
+  weights STRUCT<
+    FirstName FLOAT64,
+    LastName FLOAT64,
+    AddressLine1 FLOAT64,
+    City FLOAT64,
+    State FLOAT64,
+    ZipCode FLOAT64,
+    DateOfBirth FLOAT64,
+    PhoneNumber FLOAT64,
+    EmailAddress FLOAT64
+  >
+)
+RETURNS FLOAT64 AS (
+  (
+    -- Name fields
+    COALESCE(${self()}.name_similarity(source.FirstName, target.FirstName) * weights.FirstName, 0) +
+    COALESCE(${self()}.name_similarity(source.LastName, target.LastName) * weights.LastName, 0) +
+    
+    -- Address fields
+    COALESCE(${self()}.address_similarity(source.AddressLine1, target.AddressLine1) * weights.AddressLine1, 0) +
+    COALESCE(${self()}.jaro_winkler_similarity(source.City, target.City) * weights.City, 0) +
+    COALESCE(IF(UPPER(TRIM(source.State)) = UPPER(TRIM(target.State)), 1.0, 0.0) * weights.State, 0) +
+    COALESCE(${self()}.jaro_winkler_similarity(source.ZipCode, target.ZipCode) * weights.ZipCode, 0) +
+    
+    -- Date comparison (exact match only)
+    COALESCE(IF(source.DateOfBirth = target.DateOfBirth, 1.0, 0.0) * weights.DateOfBirth, 0) +
+    
+    -- Phone number (standardized)
+    COALESCE(
+      IF(
+        REGEXP_REPLACE(source.PhoneNumber, r'[^0-9]', '') = REGEXP_REPLACE(target.PhoneNumber, r'[^0-9]', ''),
+        1.0,
+        IF(
+          SUBSTR(REGEXP_REPLACE(source.PhoneNumber, r'[^0-9]', ''), -7) = 
+          SUBSTR(REGEXP_REPLACE(target.PhoneNumber, r'[^0-9]', ''), -7),
+          0.7,
+          0.0
+        )
+      ) * weights.PhoneNumber,
+      0
+    ) +
+    
+    -- Email (exact match gives high weight)
+    COALESCE(
+      IF(
+        LOWER(TRIM(source.EmailAddress)) = LOWER(TRIM(target.EmailAddress)),
+        1.0,
+        IF(
+          SPLIT(LOWER(TRIM(source.EmailAddress)), '@')[OFFSET(0)] = 
+          SPLIT(LOWER(TRIM(target.EmailAddress)), '@')[OFFSET(0)],
+          0.8, 
+          0.0
+        )
+      ) * weights.EmailAddress,
+      0
+    )
+  ) / (
+    -- Calculate the total applied weight
+    COALESCE(IF(source.FirstName IS NOT NULL AND target.FirstName IS NOT NULL, weights.FirstName, 0), 0) +
+    COALESCE(IF(source.LastName IS NOT NULL AND target.LastName IS NOT NULL, weights.LastName, 0), 0) +
+    COALESCE(IF(source.AddressLine1 IS NOT NULL AND target.AddressLine1 IS NOT NULL, weights.AddressLine1, 0), 0) +
+    COALESCE(IF(source.City IS NOT NULL AND target.City IS NOT NULL, weights.City, 0), 0) +
+    COALESCE(IF(source.State IS NOT NULL AND target.State IS NOT NULL, weights.State, 0), 0) +
+    COALESCE(IF(source.ZipCode IS NOT NULL AND target.ZipCode IS NOT NULL, weights.ZipCode, 0), 0) +
+    COALESCE(IF(source.DateOfBirth IS NOT NULL AND target.DateOfBirth IS NOT NULL, weights.DateOfBirth, 0), 0) +
+    COALESCE(IF(source.PhoneNumber IS NOT NULL AND target.PhoneNumber IS NOT NULL, weights.PhoneNumber, 0), 0) +
+    COALESCE(IF(source.EmailAddress IS NOT NULL AND target.EmailAddress IS NOT NULL, weights.EmailAddress, 0), 0)
+  )
+);
