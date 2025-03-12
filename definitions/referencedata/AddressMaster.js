@@ -1,3 +1,6 @@
+const functions = require('../includes/functions');
+const sql = require('../includes/sql');
+
 const tableNames = [
     'trustfinancial.Consumer_Q4',
     'trustfinancial.Consumer_Q4_fix',
@@ -51,7 +54,7 @@ const addressInts = [
     'livingunitid',
 ]
 
-let transformedColumns = addressComponentColumns.map(column => functions.transformStringColumn(column)).join(",\n");
+let transformedColumns = addressComponentColumns.map(column => sql.transformStringColumn(column)).join(",\n");
 let transformedInts = addressInts.map(column => functions.dataCast(column, 'INT')).join(",\n");
 let transformedFloats = addressFloats.map(column => functions.dataCast(column, 'FLOAT64')).join(",\n");
 
@@ -84,7 +87,7 @@ query(ctx => {
         combinedQuery += `SELECT ${functions.toH3IndexPartitionKey('latitude','longitude',13)} as H3Index_Int,
         ${transformedInts},
         ${transformedColumns},
-        ${functions.zipPad('ZipCode')},
+        ${sql.zipPad('ZipCode')},
         ${functions.dataCast('Zip_4','STRING')},
         ${transformedFloats},
   
