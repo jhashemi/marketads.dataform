@@ -1,0 +1,11 @@
+config {
+  type: "test",
+  name: "blocking_functions_test",
+  dataset: "unit"
+}
+
+-- Call the JavaScript test function
+js {
+  const { runBlockingFunctionsTests } = require("../../tests/unit/blocking_functions_test");
+  runBlockingFunctionsTests();
+}

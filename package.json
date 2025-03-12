@@ -17,10 +17,21 @@
   },
   "devDependencies": {
     "jest": "^29.5.0",
-    "eslint": "^8.40.0"
+    "jest-html-reporter": "^3.10.0",
+    "eslint": "^8.40.0",
+    "@dataform/core": "^2.9.0"
   },
   "scripts": {
     "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration",
+    "test:watch": "jest --watchAll",
+    "test:coverage": "jest --coverage",
+    "test:debug": "node --inspect-brk node_modules/.bin/jest --runInBand",
+    "test:runner": "node scripts/test_runner.js",
+    "test:runner:unit": "node scripts/test_runner.js tests/unit",
+    "test:runner:integration": "node scripts/test_runner.js tests/integration",
+    "test:report": "node scripts/test_runner.js --output=test_report.txt",
     "lint": "eslint ."
   },
   "author": "",

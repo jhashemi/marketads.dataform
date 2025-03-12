@@ -3,6 +3,6 @@
   "warehouse": "bigquery",
   "assertionSchema": "dataform_assertions",
   "defaultDatabase": "local-dimension-296708",
-  "defaultLocation": "US"
+  "defaultLocation": "US",
+  "dataformCoreVersion": "2.9.0"
 }
-    

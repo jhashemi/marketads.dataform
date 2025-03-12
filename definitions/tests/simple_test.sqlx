@@ -1,0 +1,6 @@
+config {
+  type: "assertion"
+}
+
+SELECT 1 AS test_column
+WHERE test_column = 1

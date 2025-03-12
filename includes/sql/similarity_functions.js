@@ -299,18 +299,18 @@ function generateMatchingPipeline(sourceTableRef, targetTableRef, fieldMappings,
       case 'email':
         similarityExpr = `CASE 
           WHEN LOWER(TRIM(s.${sourceField})) = LOWER(TRIM(t.${targetField})) THEN 1.0
-          WHEN REGEXP_EXTRACT(LOWER(TRIM(s.${sourceField})), r'@(.+)$') = 
-               REGEXP_EXTRACT(LOWER(TRIM(t.${targetField})), r'@(.+)$') THEN 0.5
+          WHEN REGEXP_EXTRACT(LOWER(TRIM(s.${sourceField})), '@(.+)$') = 
+               REGEXP_EXTRACT(LOWER(TRIM(t.${targetField})), '@(.+)$') THEN 0.5
           ELSE 0.0 
         END`;
         break;
       
       case 'phone':
         similarityExpr = `CASE 
-          WHEN REGEXP_REPLACE(s.${sourceField}, r'[^0-9]', '') = 
-               REGEXP_REPLACE(t.${targetField}, r'[^0-9]', '') THEN 1.0
-          WHEN SUBSTR(REGEXP_REPLACE(s.${sourceField}, r'[^0-9]', ''), -4) = 
-               SUBSTR(REGEXP_REPLACE(t.${targetField}, r'[^0-9]', ''), -4) THEN 0.7
+          WHEN REGEXP_REPLACE(s.${sourceField}, '[^0-9]', '') = 
+               REGEXP_REPLACE(t.${targetField}, '[^0-9]', '') THEN 1.0
+          WHEN SUBSTR(REGEXP_REPLACE(s.${sourceField}, '[^0-9]', ''), -4) = 
+               SUBSTR(REGEXP_REPLACE(t.${targetField}, '[^0-9]', ''), -4) THEN 0.7
           ELSE 0.0 
         END`;
         break;

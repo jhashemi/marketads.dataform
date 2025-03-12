@@ -35,7 +35,7 @@ function createDoubleMetaphoneFunction() {
       -- First pass: Remove non-alphabetic characters and doubles except 'C'
       cleaned AS (
         SELECT 
-          REGEXP_REPLACE(str, r'[^A-Z]', '') as text,
+          REGEXP_REPLACE(str, '[^A-Z]', '') as text,
           '' as result
         FROM input_normalized
       ),
@@ -46,7 +46,7 @@ function createDoubleMetaphoneFunction() {
         SELECT
           text,
           -- Handle common phonetic patterns
-          REGEXP_REPLACE(text, r'PH', 'F') as text1,
+          REGEXP_REPLACE(text, 'PH', 'F') as text1,
           result
         FROM cleaned
       ),
@@ -55,7 +55,7 @@ function createDoubleMetaphoneFunction() {
       transform2 AS (
         SELECT
           text,
-          REGEXP_REPLACE(text1, r'(SCH|SH|CH)', 'X') as text2,
+          REGEXP_REPLACE(text1, '(SCH|SH|CH)', 'X') as text2,
           result
         FROM transformations
       ),
@@ -63,7 +63,7 @@ function createDoubleMetaphoneFunction() {
       transform3 AS (
         SELECT
           text,
-          REGEXP_REPLACE(text2, r'(DG|GH)', 'K') as text3,
+          REGEXP_REPLACE(text2, '(DG|GH)', 'K') as text3,
           result
         FROM transform2
       ),
@@ -71,7 +71,7 @@ function createDoubleMetaphoneFunction() {
       transform4 AS (
         SELECT
           text,
-          REGEXP_REPLACE(text3, r'CK', 'K') as text4,
+          REGEXP_REPLACE(text3, 'CK', 'K') as text4,
           result
         FROM transform3
       ),
@@ -79,7 +79,7 @@ function createDoubleMetaphoneFunction() {
       transform5 AS (
         SELECT
           text,
-          REGEXP_REPLACE(text4, r'WR', 'R') as text5,
+          REGEXP_REPLACE(text4, 'WR', 'R') as text5,
           result
         FROM transform4
       ),
@@ -87,7 +87,7 @@ function createDoubleMetaphoneFunction() {
       transform6 AS (
         SELECT
           text,
-          REGEXP_REPLACE(text5, r'NC', 'NK') as text6,
+          REGEXP_REPLACE(text5, 'NC', 'NK') as text6,
           result
         FROM transform5
       ),
@@ -101,11 +101,11 @@ function createDoubleMetaphoneFunction() {
               WHEN LENGTH(text6) > 0 THEN 
                 CONCAT(
                   SUBSTR(text6, 1, 1),
-                  REGEXP_REPLACE(SUBSTR(text6, 2), r'[AEIOUY]', '')
+                  REGEXP_REPLACE(SUBSTR(text6, 2), '[AEIOUY]', '')
                 )
               ELSE text6
             END,
-            r'(.)\1+', r'\1'  -- Remove consecutive duplicates
+            '(.)\1+', '\1'  -- Remove consecutive duplicates
           ) as metaphone
         FROM transform6
       )
@@ -134,7 +134,7 @@ function createMetaphoneFunction() {
       
       -- First pass: Remove non-alphabetic characters
       cleaned AS (
-        SELECT REGEXP_REPLACE(str, r'[^A-Z]', '') as text
+        SELECT REGEXP_REPLACE(str, '[^A-Z]', '') as text
         FROM input_normalized
       ),
       
@@ -142,56 +142,56 @@ function createMetaphoneFunction() {
       transform1 AS (
         SELECT 
           -- Initial transformations
-          REGEXP_REPLACE(text, r'PH', 'F') as text
+          REGEXP_REPLACE(text, 'PH', 'F') as text
         FROM cleaned
       ),
       
       transform2 AS (
         SELECT 
-          REGEXP_REPLACE(text, r'[AEIOUWHYaeiouwhy]', '') as text
+          REGEXP_REPLACE(text, '[AEIOUWHYaeiouwhy]', '') as text
         FROM transform1
       ),
       
       transform3 AS (
         SELECT 
-          REGEXP_REPLACE(text, r'[bfpv]', 'B') as text
+          REGEXP_REPLACE(text, '[bfpv]', 'B') as text
         FROM transform2
       ),
       
       transform4 AS (
         SELECT 
-          REGEXP_REPLACE(text, r'[cgjkqsxz]', 'K') as text
+          REGEXP_REPLACE(text, '[cgjkqsxz]', 'K') as text
         FROM transform3
       ),
       
       transform5 AS (
         SELECT 
-          REGEXP_REPLACE(text, r'[dt]', 'T') as text
+          REGEXP_REPLACE(text, '[dt]', 'T') as text
         FROM transform4
       ),
       
       transform6 AS (
         SELECT 
-          REGEXP_REPLACE(text, r'[l]', 'L') as text
+          REGEXP_REPLACE(text, '[l]', 'L') as text
         FROM transform5
       ),
       
       transform7 AS (
         SELECT 
-          REGEXP_REPLACE(text, r'[mn]', 'M') as text
+          REGEXP_REPLACE(text, '[mn]', 'M') as text
         FROM transform6
       ),
       
       transform8 AS (
         SELECT 
-          REGEXP_REPLACE(text, r'[r]', 'R') as text
+          REGEXP_REPLACE(text, '[r]', 'R') as text
         FROM transform7
       ),
       
       -- Remove duplicates
       final_transform AS (
         SELECT
-          REGEXP_REPLACE(text, r'(.)\1+', r'\1') as metaphone
+          REGEXP_REPLACE(text, '(.)\1+', '\1') as metaphone
         FROM transform8
       )
       
@@ -215,7 +215,7 @@ function createNysiisFunction() {
       
       -- First pass: Remove non-alphabetic characters
       cleaned AS (
-        SELECT REGEXP_REPLACE(str, r'[^A-Z]', '') as text
+        SELECT REGEXP_REPLACE(str, '[^A-Z]', '') as text
         FROM input_normalized
       ),
       
@@ -268,49 +268,49 @@ function createNysiisFunction() {
       step4 AS (
         SELECT
           first_char,
-          REGEXP_REPLACE(rest, r'EV', 'AF') as rest
+          REGEXP_REPLACE(rest, 'EV', 'AF') as rest
         FROM step3
       ),
       
       step5 AS (
         SELECT
           first_char,
-          REGEXP_REPLACE(rest, r'[AEIOU]', 'A') as rest
+          REGEXP_REPLACE(rest, '[AEIOU]', 'A') as rest
         FROM step4
       ),
       
       step6 AS (
         SELECT
           first_char,
-          REGEXP_REPLACE(rest, r'Q', 'G') as rest
+          REGEXP_REPLACE(rest, 'Q', 'G') as rest
         FROM step5
       ),
       
       step7 AS (
         SELECT
           first_char,
-          REGEXP_REPLACE(rest, r'Z', 'S') as rest
+          REGEXP_REPLACE(rest, 'Z', 'S') as rest
         FROM step6
       ),
       
       step8 AS (
         SELECT
           first_char,
-          REGEXP_REPLACE(rest, r'M', 'N') as rest
+          REGEXP_REPLACE(rest, 'M', 'N') as rest
         FROM step7
       ),
       
       step9 AS (
         SELECT
           first_char,
-          REGEXP_REPLACE(rest, r'KN', 'N') as rest
+          REGEXP_REPLACE(rest, 'KN', 'N') as rest
         FROM step8
       ),
       
       step10 AS (
         SELECT
           first_char,
-          REGEXP_REPLACE(rest, r'K', 'C') as rest
+          REGEXP_REPLACE(rest, 'K', 'C') as rest
         FROM step9
       ),
       
@@ -318,7 +318,7 @@ function createNysiisFunction() {
       step11 AS (
         SELECT
           first_char,
-          REGEXP_REPLACE(rest, r'(.)\1+', r'\1') as rest
+          REGEXP_REPLACE(rest, '(.)\1+', '\1') as rest
         FROM step10
       ),
       
