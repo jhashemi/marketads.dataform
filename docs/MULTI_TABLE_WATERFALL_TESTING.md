@@ -21,7 +21,156 @@ The integration tests for the Multi-Table Waterfall strategy are located in `tes
 
 4. **Required Fields Test** (`multi_table_waterfall_required_fields_test`): Validates that the strategy correctly enforces required fields for matches.
 
-5. **Large Scale Test** (`multi_table_waterfall_large_scale_test`): Combines all the above features to validate that they work together.
+5. **Multiple Matches Test** (`multi_table_waterfall_multiple_matches_test`): Validates that the strategy can return multiple matches per source record.
+
+6. **Large Scale Test** (`multi_table_waterfall_large_scale_test`): Combines all the above features to validate that they work together.
+
+## Factory Pattern Implementation
+
+The tests now use a factory pattern for creating and executing multi-table waterfall tests. This approach provides several benefits:
+
+1. **Standardized Test Structure**: All tests follow a consistent pattern, making them easier to understand and maintain.
+2. **Default Parameters**: Common test parameters are defined once and reused across tests.
+3. **Parameter Validation**: The factory validates required parameters before executing tests.
+4. **Specialized Validators**: Validator functions for specific test cases ensure comprehensive validation.
+
+### Using the Multi-Table Test Factory
+
+The factory is implemented in `tests/helpers/multi_table_test_factory.js` and includes:
+
+- `MultiTableTestFactory`: Class for creating multi-table waterfall tests
+- `DEFAULT_TEST_PARAMETERS`: Default parameters for multi-table waterfall tests
+
+#### Basic Usage
+
+```javascript
+const { MultiTableTestFactory } = require('../helpers/multi_table_test_factory');
+const { validateBasicMultiTableStructure } = require('../helpers/multi_table_validators');
+
+// Create test factory instance
+const multiTableTestFactory = new MultiTableTestFactory();
+
+// Create a basic test
+test('My Multi-Table Test', {
+  type: TestType.INTEGRATION,
+  id: 'my_multi_table_test',
+  priority: 1,
+  parameters: {
+    sourceTable: "my_source_table"
+  }
+}, multiTableTestFactory.createTest({}, validateBasicMultiTableStructure));
+```
+
+#### Custom Test Parameters
+
+You can override default parameters by specifying them in the test parameters:
+
+```javascript
+test('Custom Multi-Table Test', {
+  type: TestType.INTEGRATION,
+  id: 'custom_multi_table_test',
+  priority: 1,
+  parameters: {
+    sourceTable: "custom_source_table",
+    thresholds: {
+      high: 0.9,
+      medium: 0.75,
+      low: 0.6
+    },
+    allowMultipleMatches: true,
+    maxMatches: 3
+  }
+}, multiTableTestFactory.createTest({}, validateMultipleMatches));
+```
+
+#### Custom Validation
+
+You can create custom validation functions or use the built-in validators from `tests/helpers/multi_table_validators.js`:
+
+```javascript
+test('Custom Validation Test', {
+  type: TestType.INTEGRATION,
+  id: 'custom_validation_test',
+  priority: 1,
+  parameters: {
+    sourceTable: "custom_source_table"
+  }
+}, multiTableTestFactory.createTest({}, (sql, params) => {
+  // Basic validation
+  validateBasicMultiTableStructure(sql, params);
+  
+  // Custom validations
+  expect(sql.includes('my_specific_condition')).toBe(true);
+  
+  return {
+    success: true,
+    message: 'Custom validation passed'
+  };
+}));
+```
+
+### Available Validators
+
+The following validators are available in `tests/helpers/multi_table_validators.js`:
+
+- `validateBasicMultiTableStructure`: Validates basic structure of multi-table waterfall SQL
+- `validateFieldMapping`: Validates field mapping in multi-table waterfall SQL
+- `validateConfidenceMultipliers`: Validates confidence multipliers in multi-table waterfall SQL
+- `validateRequiredFields`: Validates required fields in multi-table waterfall SQL
+- `validateMultipleMatches`: Validates multiple matches in multi-table waterfall SQL
+- `validateComprehensive`: Comprehensive validation of all aspects of multi-table waterfall SQL
+
+## Adding New Tests
+
+To add a new multi-table waterfall test:
+
+1. Import the factory and validators:
+```javascript
+const { MultiTableTestFactory } = require('../helpers/multi_table_test_factory');
+const { validateBasicMultiTableStructure } = require('../helpers/multi_table_validators');
+```
+
+2. Create a test factory instance:
+```javascript
+const multiTableTestFactory = new MultiTableTestFactory();
+```
+
+3. Define the test using the factory:
+```javascript
+test('My New Test', {
+  type: TestType.INTEGRATION,
+  id: 'my_new_test',
+  priority: 1,
+  dependencies: ['multi_table_waterfall_basic_test'], // Optional dependencies
+  parameters: {
+    sourceTable: "my_source_table",
+    // Additional parameters as needed
+  }
+}, multiTableTestFactory.createTest({}, validateBasicMultiTableStructure));
+```
+
+## Running Tests
+
+To run the multi-table waterfall tests:
+
+```bash
+node scripts/run_tests.js --test multi_table_waterfall
+```
+
+To run a specific test:
+
+```bash
+node scripts/run_tests.js --test multi_table_waterfall_basic_test
+```
+
+## Best Practices
+
+1. **Use the Factory Pattern**: Always use the `MultiTableTestFactory` for creating tests.
+2. **Standardize Parameters**: Use the default parameters unless you need specific overrides.
+3. **Validate Thoroughly**: Choose the appropriate validator for your test case.
+4. **Document Test Purpose**: Include clear comments and descriptions for each test.
+5. **Follow Dependencies**: Structure test dependencies logically, with basic tests as prerequisites.
+6. **Keep Tests Focused**: Each test should validate a specific aspect of the strategy.
 
 ## Implementation Details
 
@@ -99,18 +248,6 @@ The tests validate the SQL generated by the strategy, checking for specific patt
 4. **Field Mappings**: SQL should reference mapped field names
 5. **Required Fields**: SQL should include conditions to check for required fields
 6. **Confidence Multipliers**: SQL should include confidence calculations
-
-## Running Tests
-
-To run the tests individually:
-
-```bash
-node scripts/run_tests.js --type integration --test multi_table_waterfall_basic_test
-node scripts/run_tests.js --type integration --test multi_table_waterfall_field_mapping_test
-node scripts/run_tests.js --type integration --test multi_table_waterfall_confidence_test
-node scripts/run_tests.js --type integration --test multi_table_waterfall_required_fields_test
-node scripts/run_tests.js --type integration --test multi_table_waterfall_large_scale_test
-```
 
 ## Troubleshooting
 

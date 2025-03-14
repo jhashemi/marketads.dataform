@@ -46,6 +46,26 @@ class MultiTableWaterfallStrategy extends WaterfallMatchStrategy {
         requiredFields: table.requiredFields || []
       }));
     }
+    
+    // Validate that we have matching rules for each reference table
+    this._validateMatchingRules();
+  }
+  
+  /**
+   * Validate that we have matching rules for each reference table
+   * @private
+   */
+  _validateMatchingRules() {
+    if (!this.matchingRules || Object.keys(this.matchingRules).length === 0) {
+      throw new Error('No matching rules defined for any reference table');
+    }
+    
+    // Check each reference table has matching rules
+    this.referenceTables.forEach(refTable => {
+      if (!this.matchingRules[refTable.id] && !this.matchingRules.default) {
+        throw new Error(`No matching rules defined for reference table ${refTable.id}`);
+      }
+    });
   }
   
   /**
@@ -65,6 +85,9 @@ class MultiTableWaterfallStrategy extends WaterfallMatchStrategy {
       ...this.thresholds,
       ...(options.thresholds || {})
     };
+    
+    // Validate and normalize thresholds to ensure they're valid numbers
+    this._normalizeThresholds(thresholds);
     
     // Start with CTE for source table
     let sql = `
@@ -92,15 +115,16 @@ WITH source_data AS (
       const requiredFieldsCondition = this._generateRequiredFieldsCondition(refTable, sourceAlias, targetAlias);
       
       // Generate enhanced score calculation with confidence multiplier
-      const scoreCalculation = `(${this._generateScoreSql(rules, sourceAlias, targetAlias)} * ${refTable.confidenceMultiplier || 1.0})`;
+      const confidenceMultiplier = parseFloat(refTable.confidenceMultiplier || 1.0);
+      const scoreCalculation = `(${this._generateScoreSql(rules, sourceAlias, targetAlias)} * ${confidenceMultiplier})`;
       
-      // Generate match SQL for this reference table
+      // Handle empty reference tables with EXISTS check
       const matchSql = `
 ${matchCTE} AS (
   SELECT 
     ${sourceAlias}.*,
     ${targetAlias}.id AS reference_id,
-    ${targetAlias}.${refTable.keyField || 'id'} AS match_key,
+    ${targetAlias}.${this._escapeFieldName(refTable.keyField || 'id')} AS match_key,
     '${refTable.name || refTable.id}' AS data_source,
     ${refTable.tablePriority} AS table_priority,
     ${index + 1} AS match_priority,
@@ -110,12 +134,16 @@ ${matchCTE} AS (
       WHEN ${scoreCalculation} >= ${thresholds.medium} THEN 'MEDIUM'
       WHEN ${scoreCalculation} >= ${thresholds.low} THEN 'LOW'
       ELSE 'NONE'
-    END AS ${this.confidenceField},
+    END AS ${this._escapeFieldName(this.confidenceField)},
     ${this._generateFieldMappingSelect(refTable, targetAlias)}
   FROM source_data AS ${sourceAlias}
   JOIN ${refTable.table} AS ${targetAlias}
     ON ${joinCondition}
-  WHERE ${scoreCalculation} >= ${thresholds.low}
+  WHERE 
+    -- Check if table has data
+    EXISTS (SELECT 1 FROM ${refTable.table} LIMIT 1)
+    -- Apply score threshold
+    AND ${scoreCalculation} >= ${thresholds.low}
     ${requiredFieldsCondition ? `AND ${requiredFieldsCondition}` : ''}
 )`;
       
@@ -136,6 +164,23 @@ ${matchCTE} AS (
   }
   
   /**
+   * Normalize thresholds to ensure they're valid numbers
+   * @private
+   * @param {Object} thresholds - Threshold values
+   */
+  _normalizeThresholds(thresholds) {
+    // Ensure thresholds are valid numbers between 0 and 1
+    thresholds.high = Math.min(1, Math.max(0, parseFloat(thresholds.high) || 0.85));
+    thresholds.medium = Math.min(1, Math.max(0, parseFloat(thresholds.medium) || 0.70));
+    thresholds.low = Math.min(1, Math.max(0, parseFloat(thresholds.low) || 0.55));
+    
+    // Ensure thresholds are in descending order
+    thresholds.high = Math.max(thresholds.high, thresholds.medium, thresholds.low);
+    thresholds.medium = Math.min(thresholds.high, Math.max(thresholds.medium, thresholds.low));
+    thresholds.low = Math.min(thresholds.high, thresholds.medium, thresholds.low);
+  }
+  
+  /**
    * Generate SQL for multiple matches per source record
    * @private
    * @param {Array<string>} matchCTEs - Match CTE names
@@ -151,7 +196,7 @@ ${matchCTE} AS (
       PARTITION BY ${this._getSourceKeyFields('source_record')}
       ORDER BY 
         table_priority,
-        CASE ${this.confidenceField}
+        CASE ${this._escapeFieldName(this.confidenceField)}
           WHEN 'HIGH' THEN 1
           WHEN 'MEDIUM' THEN 2
           WHEN 'LOW' THEN 3
@@ -190,7 +235,7 @@ ORDER BY
       PARTITION BY ${this._getSourceKeyFields('source_record')}
       ORDER BY 
         table_priority,
-        CASE ${this.confidenceField}
+        CASE ${this._escapeFieldName(this.confidenceField)}
           WHEN 'HIGH' THEN 1
           WHEN 'MEDIUM' THEN 2
           WHEN 'LOW' THEN 3
@@ -237,9 +282,9 @@ WHERE match_rank = 1
           // Raw SQL condition
           return condition;
         } else if (condition.type === 'exact') {
-          return `${sourceAlias}.${condition.sourceField} = ${targetAlias}.${condition.targetField}`;
+          return `${sourceAlias}.${this._escapeFieldName(condition.sourceField)} = ${targetAlias}.${this._escapeFieldName(condition.targetField)}`;
         } else if (condition.type === 'null_safe') {
-          return `${sourceAlias}.${condition.sourceField} <=> ${targetAlias}.${condition.targetField}`;
+          return `${sourceAlias}.${this._escapeFieldName(condition.sourceField)} <=> ${targetAlias}.${this._escapeFieldName(condition.targetField)}`;
         } else {
           // Default to raw condition if specified
           return condition.condition || 'TRUE';
@@ -267,17 +312,17 @@ WHERE match_rank = 1
       .map(field => {
         if (typeof field === 'string') {
           // Simple required field (must not be null)
-          return `${targetAlias}.${field} IS NOT NULL`;
+          return `${targetAlias}.${this._escapeFieldName(field)} IS NOT NULL`;
         } else if (field.condition) {
           // Custom condition
           return field.condition;
         } else if (field.targetField) {
           // Source to target field comparison
           const operator = field.operator || '=';
-          return `${sourceAlias}.${field.sourceField} ${operator} ${targetAlias}.${field.targetField}`;
+          return `${sourceAlias}.${this._escapeFieldName(field.sourceField)} ${operator} ${targetAlias}.${this._escapeFieldName(field.targetField)}`;
         } else {
           // Target field not null check
-          return `${targetAlias}.${field.field} IS NOT NULL`;
+          return `${targetAlias}.${this._escapeFieldName(field.field)} IS NOT NULL`;
         }
       })
       .join(' AND ');
@@ -301,16 +346,70 @@ WHERE match_rank = 1
       .map(mapping => {
         if (typeof mapping === 'string') {
           // Simple field name mapping (same name)
-          return `${targetAlias}.${mapping} AS ${mapping}`;
+          return `${targetAlias}.${this._escapeFieldName(mapping)} AS ${this._escapeFieldName(mapping)}`;
         } else if (mapping.expression) {
           // Expression-based mapping
-          return `${mapping.expression} AS ${mapping.as || mapping.targetField}`;
+          return `${mapping.expression} AS ${this._escapeFieldName(mapping.as || mapping.targetField)}`;
         } else {
-          // Source to target field mapping
-          return `${targetAlias}.${mapping.sourceField} AS ${mapping.targetField}`;
+          // Source to target field mapping with COALESCE to handle missing fields
+          return `COALESCE(${targetAlias}.${this._escapeFieldName(mapping.sourceField)}, NULL) AS ${this._escapeFieldName(mapping.targetField)}`;
         }
       })
       .join(',\n    ');
+  }
+  
+  /**
+   * Escape field names that contain special characters
+   * @private
+   * @param {string} fieldName - Field name to escape
+   * @returns {string} Escaped field name
+   */
+  _escapeFieldName(fieldName) {
+    if (!fieldName) return 'id';
+    
+    // If the field name contains special characters, escape it with backticks
+    return fieldName.match(/[-\s.]/) ? `\`${fieldName}\`` : fieldName;
+  }
+  
+  /**
+   * Override the base class method to handle special characters in field names
+   * @private
+   * @param {Object} rules - Matching rules
+   * @param {string} sourceAlias - Source table alias
+   * @param {string} targetAlias - Target table alias
+   * @returns {string} SQL join condition
+   */
+  _generateJoinCondition(rules, sourceAlias, targetAlias) {
+    // If no rules or no blocking rules, return TRUE (cross join)
+    if (!rules || !rules.blocking || !Array.isArray(rules.blocking) || rules.blocking.length === 0) {
+      return 'TRUE';
+    }
+    
+    return rules.blocking
+      .map(rule => {
+        // Check if custom condition is provided
+        if (rule.condition) {
+          return rule.condition;
+        }
+        
+        // Get field names and escape them if needed
+        const sourceField = this._escapeFieldName(rule.sourceField);
+        const targetField = this._escapeFieldName(rule.targetField);
+        
+        // Check if exact match or other type
+        if (rule.exact) {
+          return `${sourceAlias}.${sourceField} = ${targetAlias}.${targetField}`;
+        } else if (rule.method === 'soundex') {
+          return `SOUNDEX(${sourceAlias}.${sourceField}) = SOUNDEX(${targetAlias}.${targetField})`;
+        } else if (rule.method === 'substring') {
+          const length = rule.length || 3;
+          return `SUBSTRING(${sourceAlias}.${sourceField}, 1, ${length}) = SUBSTRING(${targetAlias}.${targetField}, 1, ${length})`;
+        } else {
+          // Default to equality
+          return `${sourceAlias}.${sourceField} = ${targetAlias}.${targetField}`;
+        }
+      })
+      .join(' AND ');
   }
 }
 
