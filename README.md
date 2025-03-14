@@ -210,6 +210,35 @@ To extend the semantic type mapping:
 
 By leveraging semantic type mapping, the system can intelligently adapt its matching strategies based on the meaning of the data fields, leading to more accurate and contextually relevant match results.
 
+## SQL Generation Standards
+
+To ensure consistency and prevent common errors in SQL generation, the project includes a comprehensive set of standards and practices documented in `docs/SQL_GENERATION_STANDARDS.md`. These standards cover:
+
+### JavaScript Regex Patterns
+
+- Proper syntax for regular expressions in JavaScript when generating SQL
+- Avoiding Python-style raw string notation (r'pattern') which is invalid in JavaScript
+- Correct escaping of special characters in regex patterns
+
+### SQL String Generation Best Practices
+
+- Using template literals for readability
+- Handling NULL values defensively
+- Preventing SQL injection
+- Consistent naming conventions
+
+### Testing
+
+The project includes dedicated tests (`tests/unit/regex_pattern_tests.js`) to verify proper regex pattern handling across SQL generation functions. These tests ensure:
+
+- No Python-style raw string notation is used
+- Proper formation of REGEXP_REPLACE calls
+- Consistent abbreviations in standardized addresses
+
+### ESLint Rules
+
+A custom ESLint rule (`no-regex-r-prefix`) automatically detects and flags Python-style regex patterns in JavaScript code, preventing these errors from being introduced in the future.
+
 ## License
 
 This project is proprietary and confidential to MarketAds. All rights reserved.

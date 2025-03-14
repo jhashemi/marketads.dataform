@@ -1,5 +1,7 @@
 const assert = require('assert');
 const docs = require('../../includes/docs');
+const fs = require('fs');
+const path = require('path');
 
 // Define tests in the format expected by the custom test runner
 const tests = [
@@ -28,12 +30,44 @@ const tests = [
       }
       return true;
     }
+  },
+  {
+    id: 'factory_classes_jsdoc',
+    name: 'Factory classes should have proper JSDoc documentation',
+    type: 'unit',
+    tags: ['docs', 'jsdoc', 'factory'],
+    priority: 1,
+    testFn: async () => {
+      const factoryFiles = [
+        'includes/matching_system_factory.js',
+        'includes/historical_matcher_factory.js',
+        'includes/match_strategy_factory.js'
+      ];
+      
+      for (const file of factoryFiles) {
+        const content = fs.readFileSync(path.resolve(file), 'utf8');
+        
+        // Check for class documentation
+        assert.ok(content.includes('@class'), `${file} should include @class JSDoc tag`);
+        
+        // Check for method documentation
+        assert.ok(content.includes('@param'), `${file} should include @param JSDoc tags`);
+        
+        // Check for return type documentation
+        assert.ok(content.includes('@returns'), `${file} should include @returns JSDoc tags`);
+        
+        // Check for examples
+        assert.ok(content.includes('@example'), `${file} should include @example JSDoc tags`);
+      }
+      
+      return true;
+    }
   }
 ];
 
 // Jest-style tests
-describe('docs', () => {
-  describe('columns', () => {
+describe('Documentation', () => {
+  describe('Column Metadata', () => {
     it('should be an object', () => {
       assert.strictEqual(typeof docs.columns, 'object', 'columns should be an object');
     });
@@ -43,6 +77,32 @@ describe('docs', () => {
       for (const col of expectedColumns) {
         assert.ok(docs.columns.hasOwnProperty(col), `columns should have property '${col}'`);
         assert.strictEqual(typeof docs.columns[col], 'string', `columns.${col} should be a string`);
+      }
+    });
+  });
+  
+  describe('JSDoc Documentation', () => {
+    it('should have proper JSDoc for factory classes', () => {
+      const factoryFiles = [
+        'includes/matching_system_factory.js',
+        'includes/historical_matcher_factory.js',
+        'includes/match_strategy_factory.js'
+      ];
+      
+      for (const file of factoryFiles) {
+        const content = fs.readFileSync(path.resolve(file), 'utf8');
+        
+        // Check for class documentation
+        assert.ok(content.includes('@class'), `${file} should include @class JSDoc tag`);
+        
+        // Check for method documentation
+        assert.ok(content.includes('@param'), `${file} should include @param JSDoc tags`);
+        
+        // Check for return type documentation
+        assert.ok(content.includes('@returns'), `${file} should include @returns JSDoc tags`);
+        
+        // Check for examples
+        assert.ok(content.includes('@example'), `${file} should include @example JSDoc tags`);
       }
     });
   });

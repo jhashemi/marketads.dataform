@@ -18,8 +18,31 @@ const {
   validateComprehensive
 } = require('../helpers/multi_table_validators');
 
-// Create test factory instance
-const multiTableTestFactory = new MultiTableTestFactory();
+// Create test factory instance with standardized options
+const multiTableTestFactory = new MultiTableTestFactory({
+  defaultSourceTable: "test_customer_data",
+  defaultReferenceTables: [
+    {
+      id: "verified_customers",
+      table: "verified_customers",
+      name: "Verified Customers",
+      keyField: "customer_id",
+      priority: 1
+    },
+    {
+      id: "crm_customers",
+      table: "crm_customers",
+      name: "CRM Customers",
+      keyField: "customer_id",
+      priority: 2
+    }
+  ],
+  defaultOptions: {
+    confidenceThreshold: 0.75,
+    allowMultipleMatches: false,
+    maxMatches: 1
+  }
+});
 
 // Define test suite
 describe('Multi-Table Waterfall Strategy Tests', () => {
@@ -29,7 +52,10 @@ describe('Multi-Table Waterfall Strategy Tests', () => {
     id: 'multi_table_waterfall_basic_test',
     priority: 1,
     parameters: {
-      sourceTable: "test_customer_data"
+      sourceTable: "test_customer_data",
+      factoryOptions: {
+        useClassBasedFactoryPattern: true
+      }
     }
   }, multiTableTestFactory.createTest({}, validateBasicMultiTableStructure));
   
@@ -41,6 +67,9 @@ describe('Multi-Table Waterfall Strategy Tests', () => {
     dependencies: ['multi_table_waterfall_basic_test'],
     parameters: {
       sourceTable: "test_customer_data",
+      factoryOptions: {
+        useClassBasedFactoryPattern: true
+      },
       fieldMappings: {
         verified_customers: [
           {
@@ -129,29 +158,11 @@ describe('Multi-Table Waterfall Strategy Tests', () => {
     ],
     parameters: {
       sourceTable: "test_customers_combined",
-      referenceTables: [
-        {
-          id: "verified_customers",
-          table: "verified_customers",
-          name: "Verified Customers",
-          keyField: "customer_id",
-          priority: 1
-        },
-        {
-          id: "crm_customers",
-          table: "crm_customers",
-          name: "CRM Customers",
-          keyField: "customer_id",
-          priority: 2
-        },
-        {
-          id: "marketing_customers",
-          table: "marketing_customers",
-          name: "Marketing Customers",
-          keyField: "lead_id",
-          priority: 3
-        }
-      ],
+      factoryOptions: {
+        useClassBasedFactoryPattern: true,
+        initializeData: true,
+        validateResult: true
+      },
       matchingRules: {
         verified_customers: {
           blocking: [
@@ -310,7 +321,22 @@ describe('Multi-Table Waterfall Strategy Tests', () => {
         low: 0.6
       }
     }
-  }, multiTableTestFactory.createTest({}, validateComprehensive));
+  }, multiTableTestFactory.createTest({
+    beforeTest: (context) => {
+      // Initialize test data for all reference tables
+      if (context.parameters.factoryOptions?.initializeData) {
+        return multiTableTestFactory.initializeTestData(context);
+      }
+      return context;
+    },
+    afterTest: (context, result) => {
+      // Perform additional validation on test results
+      if (context.parameters.factoryOptions?.validateResult) {
+        return multiTableTestFactory.validateTestResults(context, result);
+      }
+      return result;
+    }
+  }, validateComprehensive));
   
   // Custom validation test with specific assertions
   test('Multi-Table Waterfall Custom Validation Test', {

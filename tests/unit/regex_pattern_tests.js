@@ -38,7 +38,7 @@ describe('RegEx Pattern Handling in SQL Generation', () => {
     // Should properly form the REGEXP_REPLACE calls
     assert(sql.includes("REGEXP_REPLACE"), "SQL should use REGEXP_REPLACE");
     assert(sql.includes("(MR|MRS|MS|DR|PROF)"), "SQL should contain prefix pattern");
-    assert(sql.includes("(JR|SR|I|II|III|IV|V)"), "SQL should contain suffix pattern");
+    assert(sql.includes("(JR|SR|I|II|III|IV|V|ESQ|MD|PHD)"), "SQL should contain suffix pattern");
   });
   
   test('standardizeAddress handles regex patterns properly', () => {

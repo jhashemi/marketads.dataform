@@ -1,0 +1,48 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Terminal Command Execution Rules
+
+**Principle:** Always execute commands from the project's root directory. Avoid prepending commands with directory changes or other modifications.
+
+- Run commands directly from the root.
+- Use the exact command as intended.
+
+## General Example
+
+**BAD** (Modifies execution context):
+
+```bash
+<prefix> && <command>
+```
+
+**GOOD** (Runs command directly):
+
+```bash
+<command>
+```
+
+## Specific Example (pytest)
+
+**BAD** (Changes directory before running pytest):
+
+```bash
+cd C:\Dev\AISDR\dialog_agent && python -m pytest -v tests/unit/models/test_sales_models.py
+```
+
+**GOOD** (Runs pytest from the root):
+
+```bash
+pytest -v tests/unit/models/test_sales_models.py
+```
+
+## Potential Issues
+
+Modifying the execution context can cause:
+
+- File not found errors.
+- Incorrect imports.
+- Relative path issues.
+- Unexpected behavior.
