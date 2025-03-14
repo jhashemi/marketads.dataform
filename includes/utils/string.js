@@ -11,15 +11,11 @@
  * @returns {string} Camel case string
  */
 function toCamelCase(str) {
-  if (!str || typeof str !== 'string') {
-    return '';
-  }
-  
-  return str
-    .replace(/(?:^\w|[A-Z]|\b\w)/g, (letter, index) => 
-      index === 0 ? letter.toLowerCase() : letter.toUpperCase()
-    )
-    .replace(/\s+|_|-|\./g, '');
+  if (!str || typeof str !== 'string') return '';
+  // Insert space between lowercase and uppercase letters to separate camelCase words
+  let result = str.replace(/([a-z])([A-Z])/g, '$1 $2');
+  let words = result.split(/[\s_\-\.]+/);
+  return words.map((word, index) => index === 0 ? word.toLowerCase() : (word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())).join('');
 }
 
 /**
@@ -33,7 +29,7 @@ function toSnakeCase(str) {
   }
   
   return str
-    .replace(/\s+/g, '_')
+    .replace(/[\s-]+/g, '_')
     .replace(/([a-z])([A-Z])/g, '$1_$2')
     .replace(/[^a-zA-Z0-9_]/g, '')
     .toLowerCase();
@@ -45,13 +41,11 @@ function toSnakeCase(str) {
  * @returns {string} Pascal case string
  */
 function toPascalCase(str) {
-  if (!str || typeof str !== 'string') {
-    return '';
-  }
-  
-  return str
-    .replace(/(?:^\w|[A-Z]|\b\w)/g, letter => letter.toUpperCase())
-    .replace(/\s+|_|-|\./g, '');
+  if (!str || typeof str !== 'string') return '';
+  // Insert space between lowercase and uppercase letters to separate camelCase words
+  let result = str.replace(/([a-z])([A-Z])/g, '$1 $2');
+  let words = result.split(/[\s_\-\.]+/);
+  return words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join('');
 }
 
 /**
@@ -79,11 +73,13 @@ function normalizeString(str) {
  * @returns {string} Truncated string
  */
 function truncate(str, maxLength, suffix = '...') {
-  if (!str || typeof str !== 'string' || str.length <= maxLength) {
-    return str || '';
+  if (!str || typeof str !== 'string') {
+    return '';
   }
-  
-  return str.substring(0, maxLength - suffix.length) + suffix;
+  if (str.length <= maxLength) {
+    return str;
+  }
+  return str.substring(0, maxLength) + suffix;
 }
 
 /**

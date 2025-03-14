@@ -7,7 +7,7 @@
  * problems where reference data comes from multiple sources of varying quality.
  */
 
-const WaterfallMatchStrategy = require('./waterfall_match_strategy');
+const { WaterfallMatchStrategy } = require('./waterfall_match_strategy');
 
 /**
  * Multi-Table Waterfall Match Strategy
@@ -314,4 +314,4 @@ WHERE match_rank = 1
   }
 }
 
-module.exports = MultiTableWaterfallStrategy; 
+module.exports = { MultiTableWaterfallStrategy }; 

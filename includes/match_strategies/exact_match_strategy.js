@@ -1,11 +1,11 @@
 // dataform/includes/match_strategies/exact_match_strategy.js
 
-const MatchStrategy = require("../match_strategy");
+const { MatchStrategy } = require("../match_strategy");
 const functions = require("../functions");
 
 class ExactMatchStrategy extends MatchStrategy {
   constructor(col1, col2) {
-    super();
+    super('exact', { col1, col2 });
     this.col1 = col1;
     this.col2 = col2;
   }

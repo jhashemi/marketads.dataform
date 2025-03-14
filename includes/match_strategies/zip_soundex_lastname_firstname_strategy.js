@@ -1,12 +1,12 @@
 // dataform/includes/match_strategies/zip_soundex_lastname_firstname_strategy.js
 
-const MatchStrategy = require("../match_strategy");
+const { MatchStrategy } = require("../match_strategy");
 const functions = require("../functions");
 const blocking_functions = require("../blocking_functions");
 
 class ZipSoundexLastNameFirstNameStrategy extends MatchStrategy {
   constructor(zipCol, lastNameCol, firstNameCol) {
-    super();
+    super('zip_soundex_lastname_firstname', { zipCol, lastNameCol, firstNameCol });
     this.zipCol = zipCol;
     this.lastNameCol = lastNameCol;
     this.firstNameCol = firstNameCol;
@@ -24,4 +24,4 @@ class ZipSoundexLastNameFirstNameStrategy extends MatchStrategy {
   // ... score and describe methods ...
 }
 
-module.exports = ZipSoundexLastNameFirstNameStrategy;
+module.exports = { ZipSoundexLastNameFirstNameStrategy };

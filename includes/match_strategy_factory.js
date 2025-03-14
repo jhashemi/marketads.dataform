@@ -4,10 +4,10 @@
 const functions = require("./functions");
 
 // Import strategy implementations
-const ExactMatchStrategy = require("./match_strategies/exact_match_strategy");
-const ZipSoundexLastNameFirstNameStrategy = require("./match_strategies/zip_soundex_lastname_firstname_strategy");
-const WaterfallMatchStrategy = require("./match_strategies/waterfall_match_strategy");
-const MultiTableWaterfallStrategy = require("./match_strategies/multi_table_waterfall_strategy");
+const { ExactMatchStrategy } = require("./match_strategies/exact_match_strategy");
+const { ZipSoundexLastNameFirstNameStrategy } = require("./match_strategies/zip_soundex_lastname_firstname_strategy");
+const { WaterfallMatchStrategy } = require("./match_strategies/waterfall_match_strategy");
+const { MultiTableWaterfallStrategy } = require("./match_strategies/multi_table_waterfall_strategy");
 
 // Import column documentation 
 const docs = require("./docs"); // Fix path to docs.js - remove the leading slash

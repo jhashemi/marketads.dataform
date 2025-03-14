@@ -239,4 +239,4 @@ WHERE match_rank = 1
   }
 }
 
-module.exports = WaterfallMatchStrategy; 
+module.exports = { WaterfallMatchStrategy }; 

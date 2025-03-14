@@ -75,7 +75,7 @@ function standardizeName(field, options = {}) {
   
   if (removeSuffix) {
     // Remove common name suffixes (Jr, Sr, III, etc.)
-    sql = `REGEXP_REPLACE(${sql}, '\\s+(JR|SR|I|II|III|IV|V|ESQ|MD|PHD)\\.?$', '')`;
+    sql = `REGEXP_REPLACE(${sql}, '\\s+(JR|SR|I|II|III|IV|V)\\.?$', '')`;
   }
   
   return sql;
