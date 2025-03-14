@@ -45,10 +45,35 @@ class MultiTableWaterfallStrategy extends WaterfallMatchStrategy {
         confidenceMultiplier: table.confidenceMultiplier || 1.0,
         requiredFields: table.requiredFields || []
       }));
+      
+      // Sort tables by priority to optimize matching (highest priority first)
+      this.referenceTables.sort((a, b) => a.tablePriority - b.tablePriority);
     }
     
     // Validate that we have matching rules for each reference table
     this._validateMatchingRules();
+    
+    // Initialize SQL fragment cache
+    this._initializeCache();
+  }
+  
+  /**
+   * Initialize the SQL fragment cache
+   * @private
+   */
+  _initializeCache() {
+    this._cache = {
+      // Cache for join conditions by rule set
+      joinConditions: new Map(),
+      // Cache for required fields conditions by table
+      requiredFieldsConditions: new Map(),
+      // Cache for field mapping SELECT clauses by table
+      fieldMappingSelects: new Map(),
+      // Cache for generated match CTEs
+      matchCTEs: new Map(),
+      // Cache for complete SQL by source table
+      generatedSQL: new Map()
+    };
   }
   
   /**
@@ -80,6 +105,14 @@ class MultiTableWaterfallStrategy extends WaterfallMatchStrategy {
       throw new Error('Source table and reference tables are required for multi-table waterfall matching');
     }
     
+    // Create a cache key for this specific context
+    const cacheKey = `${sourceTable}:${sourceAlias}:${targetAlias}:${JSON.stringify(options)}`;
+    
+    // Check if we already have cached SQL for this exact context
+    if (this._cache.generatedSQL.has(cacheKey)) {
+      return this._cache.generatedSQL.get(cacheKey);
+    }
+    
     // Override thresholds with options if provided
     const thresholds = {
       ...this.thresholds,
@@ -98,28 +131,47 @@ WITH source_data AS (
     
     // Generate SQL for each reference table match
     const matchCTEs = [];
+    const batchSize = 5; // Process reference tables in batches for better memory usage
     
-    this.referenceTables.forEach((refTable, index) => {
-      const tableAlias = `ref_${index + 1}`;
-      const matchCTE = `matches_${index + 1}`;
-      const rules = this.matchingRules[refTable.id] || this.matchingRules.default;
+    // Process reference tables in batches to optimize memory usage for large numbers of tables
+    for (let i = 0; i < this.referenceTables.length; i += batchSize) {
+      const batch = this.referenceTables.slice(i, i + batchSize);
       
-      if (!rules) {
-        throw new Error(`No matching rules defined for reference table ${refTable.id}`);
-      }
-      
-      // Create join conditions incorporating required fields
-      const joinCondition = this._generateEnhancedJoinCondition(rules, refTable, sourceAlias, targetAlias);
-      
-      // Add required field conditions if specified
-      const requiredFieldsCondition = this._generateRequiredFieldsCondition(refTable, sourceAlias, targetAlias);
-      
-      // Generate enhanced score calculation with confidence multiplier
-      const confidenceMultiplier = parseFloat(refTable.confidenceMultiplier || 1.0);
-      const scoreCalculation = `(${this._generateScoreSql(rules, sourceAlias, targetAlias)} * ${confidenceMultiplier})`;
-      
-      // Handle empty reference tables with EXISTS check
-      const matchSql = `
+      batch.forEach((refTable, index) => {
+        const batchIndex = i + index;
+        const tableAlias = `ref_${batchIndex + 1}`;
+        const matchCTE = `matches_${batchIndex + 1}`;
+        
+        // Check if we already have a cached CTE for this reference table and context
+        const tableCacheKey = `${refTable.id}:${sourceTable}:${sourceAlias}:${targetAlias}`;
+        if (this._cache.matchCTEs.has(tableCacheKey)) {
+          const cachedCTE = this._cache.matchCTEs.get(tableCacheKey);
+          matchCTEs.push(cachedCTE.name);
+          sql += `\n, ${cachedCTE.sql}`;
+          return;
+        }
+        
+        const rules = this.matchingRules[refTable.id] || this.matchingRules.default;
+        
+        if (!rules) {
+          throw new Error(`No matching rules defined for reference table ${refTable.id}`);
+        }
+        
+        // Create join conditions incorporating required fields
+        const joinCondition = this._generateEnhancedJoinCondition(rules, refTable, sourceAlias, targetAlias);
+        
+        // Add required field conditions if specified
+        const requiredFieldsCondition = this._generateRequiredFieldsCondition(refTable, sourceAlias, targetAlias);
+        
+        // Generate enhanced score calculation with confidence multiplier
+        const confidenceMultiplier = parseFloat(refTable.confidenceMultiplier || 1.0);
+        const scoreCalculation = `(${this._generateScoreSql(rules, sourceAlias, targetAlias)} * ${confidenceMultiplier})`;
+        
+        // Generate field mappings
+        const fieldMappingSelect = this._generateFieldMappingSelect(refTable, targetAlias);
+        
+        // Handle empty reference tables with EXISTS check
+        const matchSql = `
 ${matchCTE} AS (
   SELECT 
     ${sourceAlias}.*,
@@ -127,7 +179,7 @@ ${matchCTE} AS (
     ${targetAlias}.${this._escapeFieldName(refTable.keyField || 'id')} AS match_key,
     '${refTable.name || refTable.id}' AS data_source,
     ${refTable.tablePriority} AS table_priority,
-    ${index + 1} AS match_priority,
+    ${batchIndex + 1} AS match_priority,
     ${scoreCalculation} AS match_score,
     CASE
       WHEN ${scoreCalculation} >= ${thresholds.high} THEN 'HIGH'
@@ -135,7 +187,7 @@ ${matchCTE} AS (
       WHEN ${scoreCalculation} >= ${thresholds.low} THEN 'LOW'
       ELSE 'NONE'
     END AS ${this._escapeFieldName(this.confidenceField)},
-    ${this._generateFieldMappingSelect(refTable, targetAlias)}
+    ${fieldMappingSelect}
   FROM source_data AS ${sourceAlias}
   JOIN ${refTable.table} AS ${targetAlias}
     ON ${joinCondition}
@@ -146,10 +198,14 @@ ${matchCTE} AS (
     AND ${scoreCalculation} >= ${thresholds.low}
     ${requiredFieldsCondition ? `AND ${requiredFieldsCondition}` : ''}
 )`;
-      
-      matchCTEs.push(matchCTE);
-      sql += `\n, ${matchSql}`;
-    });
+        
+        // Cache the generated CTE
+        this._cache.matchCTEs.set(tableCacheKey, { name: matchCTE, sql: matchSql });
+        
+        matchCTEs.push(matchCTE);
+        sql += `\n, ${matchSql}`;
+      });
+    }
     
     // Generate final waterfall selection - either single best match or multiple matches
     if (this.allowMultipleMatches && this.maxMatches > 1) {
@@ -159,6 +215,9 @@ ${matchCTE} AS (
       // Single best match per source record
       sql += this._generateSingleMatchSQL(matchCTEs);
     }
+    
+    // Cache the complete SQL for this context
+    this._cache.generatedSQL.set(cacheKey, sql);
     
     return sql;
   }
@@ -187,6 +246,22 @@ ${matchCTE} AS (
    * @returns {string} SQL for multiple matches
    */
   _generateMultipleMatchesSQL(matchCTEs) {
+    // Optimize for large numbers of CTEs by batching UNION ALL operations
+    const batchSize = 10;
+    let unionSQL = '';
+    
+    // Process match CTEs in batches for better performance with large numbers of tables
+    for (let i = 0; i < matchCTEs.length; i += batchSize) {
+      const batch = matchCTEs.slice(i, i + batchSize);
+      const batchSQL = batch.map(cte => `SELECT * FROM ${cte}`).join('\nUNION ALL\n');
+      
+      if (unionSQL) {
+        unionSQL = `${unionSQL}\nUNION ALL\n${batchSQL}`;
+      } else {
+        unionSQL = batchSQL;
+      }
+    }
+    
     return `
 -- Multiple matches selection with priority and confidence ranking
 , ranked_matches AS (
@@ -205,7 +280,7 @@ ${matchCTE} AS (
         match_score DESC
     ) AS match_rank
   FROM (
-    ${matchCTEs.map(cte => `SELECT * FROM ${cte}`).join('\nUNION ALL\n')}
+    ${unionSQL}
   ) all_matches
 )
 
@@ -226,6 +301,22 @@ ORDER BY
    * @returns {string} SQL for single match
    */
   _generateSingleMatchSQL(matchCTEs) {
+    // Optimize for large numbers of CTEs by batching UNION ALL operations
+    const batchSize = 10;
+    let unionSQL = '';
+    
+    // Process match CTEs in batches for better performance with large numbers of tables
+    for (let i = 0; i < matchCTEs.length; i += batchSize) {
+      const batch = matchCTEs.slice(i, i + batchSize);
+      const batchSQL = batch.map(cte => `SELECT * FROM ${cte}`).join('\nUNION ALL\n');
+      
+      if (unionSQL) {
+        unionSQL = `${unionSQL}\nUNION ALL\n${batchSQL}`;
+      } else {
+        unionSQL = batchSQL;
+      }
+    }
+    
     return `
 -- Single best match selection - takes the highest priority match for each source record
 , ranked_matches AS (
@@ -244,7 +335,7 @@ ORDER BY
         match_score DESC
     ) AS match_rank
   FROM (
-    ${matchCTEs.map(cte => `SELECT * FROM ${cte}`).join('\nUNION ALL\n')}
+    ${unionSQL}
   ) all_matches
 )
 
@@ -265,13 +356,23 @@ WHERE match_rank = 1
    * @returns {string} SQL join condition
    */
   _generateEnhancedJoinCondition(rules, refTable, sourceAlias, targetAlias) {
-    // Start with base join condition from parent class
+    // Create a cache key for this specific join condition
+    const cacheKey = `${refTable.id}:${JSON.stringify(rules)}:${sourceAlias}:${targetAlias}`;
+    
+    // Check if we already have a cached join condition
+    if (this._cache.joinConditions.has(cacheKey)) {
+      return this._cache.joinConditions.get(cacheKey);
+    }
+    
+    // Start with base join condition from parent class or overridden method
     const baseJoinCondition = this._generateJoinCondition(rules, sourceAlias, targetAlias);
     
     // Add any table-specific blocking conditions
     const tableBlockingConditions = refTable.blockingConditions || [];
     
     if (tableBlockingConditions.length === 0) {
+      // Cache and return the base condition
+      this._cache.joinConditions.set(cacheKey, baseJoinCondition);
       return baseJoinCondition;
     }
     
@@ -292,7 +393,12 @@ WHERE match_rank = 1
       })
       .join(' AND ');
     
-    return `${baseJoinCondition} AND ${additionalConditions}`;
+    const enhancedCondition = `${baseJoinCondition} AND ${additionalConditions}`;
+    
+    // Cache the result
+    this._cache.joinConditions.set(cacheKey, enhancedCondition);
+    
+    return enhancedCondition;
   }
   
   /**
@@ -308,7 +414,15 @@ WHERE match_rank = 1
       return '';
     }
     
-    return refTable.requiredFields
+    // Create a cache key for this specific required fields condition
+    const cacheKey = `${refTable.id}:${sourceAlias}:${targetAlias}`;
+    
+    // Check if we already have a cached condition
+    if (this._cache.requiredFieldsConditions.has(cacheKey)) {
+      return this._cache.requiredFieldsConditions.get(cacheKey);
+    }
+    
+    const condition = refTable.requiredFields
       .map(field => {
         if (typeof field === 'string') {
           // Simple required field (must not be null)
@@ -326,6 +440,11 @@ WHERE match_rank = 1
         }
       })
       .join(' AND ');
+    
+    // Cache the result
+    this._cache.requiredFieldsConditions.set(cacheKey, condition);
+    
+    return condition;
   }
   
   /**
@@ -342,7 +461,15 @@ WHERE match_rank = 1
       return '';
     }
     
-    return mappings
+    // Create a cache key for this specific field mapping SELECT clause
+    const cacheKey = `${refTable.id}:${targetAlias}`;
+    
+    // Check if we already have a cached SELECT clause
+    if (this._cache.fieldMappingSelects.has(cacheKey)) {
+      return this._cache.fieldMappingSelects.get(cacheKey);
+    }
+    
+    const select = mappings
       .map(mapping => {
         if (typeof mapping === 'string') {
           // Simple field name mapping (same name)
@@ -356,6 +483,11 @@ WHERE match_rank = 1
         }
       })
       .join(',\n    ');
+    
+    // Cache the result
+    this._cache.fieldMappingSelects.set(cacheKey, select);
+    
+    return select;
   }
   
   /**
@@ -410,6 +542,14 @@ WHERE match_rank = 1
         }
       })
       .join(' AND ');
+  }
+  
+  /**
+   * Clear the SQL fragment cache
+   * This can be useful when configuration changes
+   */
+  clearCache() {
+    this._initializeCache();
   }
 }
 

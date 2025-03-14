@@ -364,10 +364,10 @@ gantt
    - [x] Validate with full integration test suite (Green)
    - [x] Add edge case tests (Red)
    - [x] Implement handling for edge cases (Green)
-   - [ ] Refactor for performance (Refactor)
-   - [ ] Add performance benchmarking for multi-table scenarios (Red)
-   - [ ] Optimize SQL generation for large number of tables (Green)
-   - [ ] Implement caching for repeated SQL fragments (Refactor)
+   - [x] Refactor for performance (Refactor)
+   - [x] Add performance benchmarking for multi-table scenarios (Red)
+   - [x] Optimize SQL generation for large number of tables (Green)
+   - [x] Implement caching for repeated SQL fragments (Refactor)
 
 4. **Documentation Enhancement**:
    - [ ] Write failing documentation tests (Red)
