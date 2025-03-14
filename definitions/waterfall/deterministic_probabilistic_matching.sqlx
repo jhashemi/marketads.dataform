@@ -207,7 +207,7 @@ const pipelineConfig = {
 };
 
 // Generate the SQL for the deterministic-then-probabilistic matching pipeline
-const matchingSql = waterfallPipeline.generateDeterministicThenProbabilisticPipeline(pipelineConfig);
+
 
 // Execute the generated SQL
-${matchingSql} 
+${waterfallPipeline.generateDeterministicThenProbabilisticPipeline(pipelineConfig)} 

@@ -1,17 +1,26 @@
 // dataform/includes/match_strategy_factory.js
 
+// Import core utilities
+const functions = require("./functions");
+
+// Import strategy implementations
 const ExactMatchStrategy = require("./match_strategies/exact_match_strategy");
 const ZipSoundexLastNameFirstNameStrategy = require("./match_strategies/zip_soundex_lastname_firstname_strategy");
 const WaterfallMatchStrategy = require("./match_strategies/waterfall_match_strategy");
 const MultiTableWaterfallStrategy = require("./match_strategies/multi_table_waterfall_strategy");
-// ... import other strategies ...
 
-const docs = require("/includes/docs"); // Import column information from docs.js
+// Import column documentation 
+const docs = require("./docs"); // Fix path to docs.js - remove the leading slash
 
 class MatchStrategyFactory {
   canHandle(col1, col2) {
-    const col1Type = docs.columns.find(col => col.name === col1)?.type;
-    const col2Type = docs.columns.find(col => col.name === col2)?.type;
+    const col1Type = docs.columns?.find(col => col.name === col1)?.type;
+    const col2Type = docs.columns?.find(col => col.name === col2)?.type;
+
+    // Handle cases where column types may not be found in docs
+    if (!col1Type || !col2Type) {
+      return false;
+    }
 
     // Implement logic to determine if the factory can handle the given columns
     // based on their types and other criteria
@@ -33,12 +42,10 @@ class MatchStrategyFactory {
       const col1Type = docs.columns.find(col => col.name === col1)?.type;
       const col2Type = docs.columns.find(col => col.name === col2)?.type;
 
-      if (col1Type === "STRING" && col2Type === "STRING") {
-        // Example: Use exact matching for string columns
+      if ((col1Type === "STRING" && col2Type === "STRING") ||
+          (col1Type === "INTEGER" && col2Type === "INTEGER")) {
+        // Use exact matching for string or integer columns
         return new ExactMatchStrategy(col1, col2);
-      } else if (col1Type === "INTEGER" && col2Type === "INTEGER") {
-        // Example: Use range matching for integer columns
-        return new RangeMatchStrategy(col1, col2); // Assuming you have a RangeMatchStrategy implemented
       }
       // ... add more conditions for other column types and matching strategies ...
     }
@@ -86,7 +93,6 @@ class MatchStrategyFactory {
   }
 }
 
-// Create singleton instance
-const matchStrategyFactory = new MatchStrategyFactory();
-
-module.exports = matchStrategyFactory;
+// Export the class itself rather than a singleton instance
+// This allows Dataform to properly require the module
+module.exports = MatchStrategyFactory;

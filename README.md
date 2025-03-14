@@ -171,6 +171,45 @@ const matchOptions = {
 };
 ```
 
+## Semantic Type Mapping
+
+The system utilizes semantic type mapping to improve the accuracy and relevance of record matching. Semantic types allow the system to understand the meaning of data fields, not just their names, and apply appropriate matching logic.
+
+### Semantic Type Map (`includes/semantic_types.js`)
+
+The `semanticTypeMap` is defined in `includes/semantic_types.js` as a JavaScript object. It maps semantic types (keys) to an array of possible column names (values).
+
+```javascript
+// Example: includes/semantic_types.js
+const semanticTypeMap = {
+  email: ["email", "email_address", "emailAddress", "e_mail"],
+  firstName: ["firstName", "first_name", "personfirstname", "fname"],
+  lastName: ["lastName", "last_name", "personlastname", "lname"],
+  // ... other semantic types
+};
+
+module.exports = { semanticTypeMap };
+```
+
+### Usage in Matching Functions
+
+Matching functions in `includes/matching_functions.js` and `includes/rule_engine.js` use this map to:
+
+1. **Identify Semantic Type**: Determine the semantic type of each column being compared.
+2. **Apply Type-Aware Logic**: Conditionally apply matching logic based on semantic types. For example, columns of the same semantic type (e.g., two email fields) might use more aggressive matching techniques than columns of different semantic types.
+
+### Extending Semantic Types
+
+To extend the semantic type mapping:
+
+1. **Open `includes/semantic_types.js`**.
+2. **Add New Types**: Add new key-value pairs to the `semanticTypeMap` object.
+  - The **key** should be a unique semantic type identifier (e.g., `city`, `phoneNumber`).
+  - The **value** should be an array of strings representing common column names associated with that semantic type.
+3. **Update Matching Functions**: Modify matching functions to utilize the new semantic types in their logic.
+
+By leveraging semantic type mapping, the system can intelligently adapt its matching strategies based on the meaning of the data fields, leading to more accurate and contextually relevant match results.
+
 ## License
 
 This project is proprietary and confidential to MarketAds. All rights reserved.

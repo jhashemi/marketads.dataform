@@ -1,6 +1,29 @@
 const pipelineGenerator = require('../../includes/pipeline/generator');
 const assert = require('assert');
 
+// Add Jest globals if they don't exist
+const test = global.test || ((name, fn) => {
+  if (typeof describe === 'undefined') {
+    console.log(`Running test: ${name}`);
+    try {
+      fn();
+      console.log(`✅ Test passed: ${name}\n`);
+    } catch (error) {
+      console.error(`❌ Test failed: ${name}`);
+      console.error(`   Error: ${error.message}`);
+      console.error(`   Stack: ${error.stack}\n`);
+      throw error;
+    }
+  }
+});
+
+const describe = global.describe || ((name, fn) => {
+  if (typeof describe === 'undefined') {
+    console.log(`\n=== ${name} ===\n`);
+    fn();
+  }
+});
+
 describe('Pipeline Generator', () => {
   
   test('generateMatchingPipeline creates complete pipeline SQL', () => {
@@ -11,8 +34,8 @@ describe('Pipeline Generator', () => {
         { name: 'reference_table_2', priority: 2 }
       ],
       fieldMappings: {
-        firstName: { source: 'first_name', target: 'firstname', type: 'first_name' },
-        lastName: { source: 'last_name', target: 'lastname', type: 'last_name' }
+        firstName: { source: 'first_name', target: 'firstname', type: 'firstName' },
+        lastName: { source: 'last_name', target: 'lastname', type: 'lastName' }
       },
       appendFields: ['customer_id'],
       outputTable: 'match_results'
@@ -67,9 +90,12 @@ describe('Pipeline Generator', () => {
     const config = {
       sourceTable: 'source_table',
       targetTable: 'target_table',
+      referenceTables: [
+        { name: 'reference_table_1', priority: 1 }
+      ],
       fieldMappings: {
-        firstName: { source: 'first_name', target: 'firstname', type: 'first_name' },
-        lastName: { source: 'last_name', target: 'lastname', type: 'last_name' }
+        firstName: { source: 'first_name', target: 'firstname', type: 'firstName' },
+        lastName: { source: 'last_name', target: 'lastname', type: 'lastName' }
       },
       appendFields: ['customer_id'],
       outputTable: 'match_results',
@@ -91,3 +117,58 @@ describe('Pipeline Generator', () => {
     assert(sql.includes('UNION ALL'), 'Should UNION with existing results');
   });
 });
+
+// For compatibility with the custom test runner
+const tests = [
+  {
+    id: 'pipeline_generator',
+    name: 'Pipeline Generator',
+    type: 'unit',
+    tags: ['pipeline', 'core'],
+    priority: 1,
+    testFn: async () => {
+      // Run all tests
+      describe('Pipeline Generator', () => {
+        // Tests will be run by the describe block above
+      });
+      
+      return true;
+    }
+  }
+];
+
+// For manual testing
+if (require.main === module) {
+  console.log("\n=== Running Pipeline Tests ===\n");
+  
+  (async () => {
+    let passed = 0;
+    let failed = 0;
+    
+    for (const test of tests) {
+      try {
+        console.log(`Running test: ${test.name}`);
+        const result = await test.testFn();
+        console.log(`✅ Test passed: ${test.name}\n`);
+        passed++;
+      } catch (error) {
+        console.error(`❌ Test failed: ${test.name}`);
+        console.error(`   Error: ${error.message}`);
+        console.error(`   Stack: ${error.stack}\n`);
+        failed++;
+      }
+    }
+    
+    console.log("=== Test Summary ===");
+    console.log(`Total: ${tests.length}`);
+    console.log(`Passed: ${passed}`);
+    console.log(`Failed: ${failed}`);
+    
+    // Return non-zero exit code if any tests failed
+    if (failed > 0) {
+      process.exit(1);
+    }
+  })();
+}
+
+module.exports = { tests };

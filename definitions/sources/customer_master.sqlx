@@ -1,0 +1,20 @@
+config {
+  type: "declaration",
+  database: "local-dimension-296708",
+  schema: "reference",
+  name: "customer_master",
+  description: "Reference customer data for matching",
+  columns: {
+    id: "Unique customer identifier",
+    first_name: "Customer first name",
+    last_name: "Customer last name",
+    email: "Customer email address",
+    address_line_1: "Street address line 1",
+    address_line_2: "Street address line 2",
+    city: "City",
+    state_code: "State code",
+    zip: "ZIP/Postal code",
+    date_of_birth: "Customer birth date",
+    gender: "Customer gender"
+  }
+} 

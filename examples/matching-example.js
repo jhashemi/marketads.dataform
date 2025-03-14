@@ -1,11 +1,10 @@
 /**
  * Matching System Example
- * 
+ *
  * This example demonstrates how to use the matching system with external libraries.
  * It shows:
  * 1. Basic rule-based matching
- * 2. ML-based matching using dedupe
- * 3. Different matching strategies and configurations
+ * 2. Different matching strategies and configurations
  */
 
 const { createMatchingSystem } = require('../includes/matching');
@@ -102,10 +101,6 @@ const targetFieldMappings = [
 
 // Create matching system with configuration
 const matchingSystem = createMatchingSystem({
-  // Enable ML-based dedupe resolver
-  useDedupeResolver: true,
-  dedupeModelPath: './dedupeModel.json',
-  
   // Customize field weights
   matching: {
     fieldWeights: {

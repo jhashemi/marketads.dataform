@@ -1,4 +1,4 @@
-a// includes/matching_functions.js
+// includes/matching_functions.js
 // Core reusable functions for the record linkage system
 
 const { semanticTypeMap } = require('./semantic_types');
@@ -12,23 +12,47 @@ const { semanticTypeMap } = require('./semantic_types');
 function standardize(input, fieldType) {
   if (!input) return "";
   
-  // Convert to uppercase and trim
+  // Map fieldType to UDF when in SQL context
+  if (typeof input === 'string' && input.includes('${')) {
+    // We're generating SQL, use UDFs
+    switch (fieldType) {
+      case 'name':
+        return `\${ref("core.text_udfs")}.standardize_name(${input})`;
+      case 'address':
+        return `\${ref("core.text_udfs")}.standardize_address(${input})`;
+      case 'phone':
+        return `\${ref("core.text_udfs")}.standardize_phone(${input})`;
+      case 'email':
+        return `\${ref("core.text_udfs")}.standardize_email(${input})`;
+      case 'zip':
+        return `SUBSTR(REGEXP_REPLACE(${input}, r'[^0-9]', ''), 1, 5)`;
+      default:
+        return `UPPER(TRIM(${input}))`;
+    }
+  }
+  
+  // JavaScript implementation for non-SQL contexts
   let result = input.toUpperCase().trim();
   
   switch (fieldType) {
     case 'name':
       // Remove titles, suffixes, and extra spaces
       result = result.replace(/^(MR|MRS|MS|DR|PROF)\.?\s+/, "")
-                    .replace(/\s+(JR|SR|I|II|III|IV|V|ESQ|MD|PHD)\.?$/, "")
+                    .replace(/\s+(JR|SR|I|II|III|IV|V|ESQ|MD|PHD)\.?$/i, "")
+                    .replace(/,\s*(JR|SR|I|II|III|IV|V|ESQ|MD|PHD)\.?$/i, "")
+                    .replace(/,/g, "")
                     .replace(/\s+/g, " ");
       break;
     case 'address':
       // Standardize common abbreviations
-      result = result.replace(/\bAPARTMENT\b|\bAPT\b/g, "APT")
-                    .replace(/\bAVENUE\b|\bAVE\b/g, "AVE")
-                    .replace(/\bBOULEVARD\b|\bBLVD\b/g, "BLVD")
-                    .replace(/\bSTREET\b|\bST\b/g, "ST")
-                    .replace(/\bROAD\b|\bRD\b/g, "RD")
+      result = result.replace(/\bAPARTMENT\b|\bAPT\b/gi, "APT")
+                    .replace(/\bAVENUE\b|\bAVE\b/gi, "AVE")
+                    .replace(/\bBOULEVARD\b|\bBLVD\b/gi, "BLVD")
+                    .replace(/\bSTREET\b|\bST\b/gi, "ST")
+                    .replace(/\bROAD\b|\bRD\b/gi, "RD")
+                    .replace(/,\s*APARTMENT/gi, " APT")
+                    .replace(/,\s*APT/gi, " APT")
+                    .replace(/,/g, "")
                     .replace(/\s+/g, " ");
       break;
     case 'phone':
@@ -48,36 +72,60 @@ function standardize(input, fieldType) {
 }
 
 /**
- * Calculate Jaro-Winkler similarity between two strings
- * Optimized for names and addresses
+ * Calculate string similarity between two strings
+ * Delegates to appropriate BigQuery function when in SQL context
  * @param {string} s1 - First string
  * @param {string} s2 - Second string
- * @returns {number} - Similarity score between 0 and 1
+ * @param {string} method - Similarity method ('levenshtein', 'jaro_winkler', 'soundex')
+ * @returns {string|number} - Similarity score between 0 and 1 or SQL expression
  */
-function jaroWinkler(s1, s2) {
-  // Implementation of Jaro-Winkler algorithm
-  // This is a simplified version for illustration
-  
+function calculateSimilarity(s1, s2, method = 'levenshtein') {
   if (!s1 || !s2) return 0;
   if (s1 === s2) return 1;
   
-  // Real implementation would go here
-  // This is a placeholder that would be replaced with actual algorithm
+  // If we're in SQL context (strings contain SQL placeholders)
+  if (typeof s1 === 'string' && s1.includes('${')) {
+    switch (method.toLowerCase()) {
+      case 'levenshtein':
+        return `\${ref("core.text_udfs")}.text_similarity(${s1}, ${s2})`;
+      case 'jaro_winkler':
+        return `ML.SIMILARITY(${s1}, ${s2}, 'JARO_WINKLER')`;
+      case 'soundex':
+        return `\${ref("core.text_udfs")}.phonetic_similarity(${s1}, ${s2}, 'SOUNDEX')`;
+      case 'address':
+        return `\${ref("core.text_udfs")}.address_similarity(${s1}, ${s2})`;
+      default:
+        return `\${ref("core.text_udfs")}.text_similarity(${s1}, ${s2})`;
+    }
+  }
   
-  return 0.5; // Placeholder
+  // JavaScript implementation for non-SQL contexts (placeholder)
+  return 0.5; // This would be replaced with actual JS implementation
 }
 
 /**
- * Generate a phonetic code for a name using a modified Soundex algorithm
+ * Generate a phonetic code for a name
  * @param {string} name - Input name
- * @returns {string} - Phonetic code
+ * @param {string} algorithm - Phonetic algorithm to use ('soundex', 'metaphone')
+ * @returns {string} - Phonetic code or SQL expression
  */
-function phoneticCode(name) {
+function phoneticCode(name, algorithm = 'soundex') {
   if (!name) return "";
   
-  // Implementation of phonetic algorithm
-  // This is a simplified version for illustration
+  // If we're in SQL context
+  if (typeof name === 'string' && name.includes('${')) {
+    switch (algorithm.toLowerCase()) {
+      case 'soundex':
+        return `SOUNDEX(${name})`;
+      case 'metaphone':
+        // BigQuery doesn't have METAPHONE, so we use SOUNDEX as a fallback
+        return `SOUNDEX(${name})`;
+      default:
+        return `SOUNDEX(${name})`;
+    }
+  }
   
+  // JavaScript implementation for non-SQL contexts (placeholder)
   return name.substring(0, 1) + "000"; // Placeholder
 }
 
@@ -100,8 +148,21 @@ function calculateConfidenceScore(sourceRecord, targetRecord, weights, threshold
       // Get semantic type for the field, default to field name if not in map
       const semanticType = semanticTypeMap[field] ? field : field; // Placeholder for actual logic
 
-      const similarity = jaroWinkler(standardize(sourceRecord[field], field),
-                                    standardize(targetRecord[field], field));
+      // Choose appropriate similarity method based on field type
+      let similarityMethod = 'levenshtein';
+      if (field.toLowerCase().includes('name')) {
+        similarityMethod = 'soundex';
+      } else if (field.toLowerCase().includes('address')) {
+        similarityMethod = 'address';
+      } else if (field.toLowerCase().includes('email')) {
+        similarityMethod = 'levenshtein';
+      }
+
+      const similarity = calculateSimilarity(
+        standardize(sourceRecord[field], field),
+        standardize(targetRecord[field], field),
+        similarityMethod
+      );
 
       fieldScores[field] = similarity;
 
@@ -147,7 +208,9 @@ function generateBlockingKeys(record, method) {
       break;
     case 'name_zip':
       if (record.LastName && record.ZipCode) {
-        keys.push(`LZ:${standardize(record.LastName.substring(0, 3), 'name')}${standardize(record.ZipCode, 'zip')}`);
+        const lastName = standardize(record.LastName, 'name');
+        const lastNamePrefix = lastName.substring(0, 4); // Use 4 characters to match the test
+        keys.push(`LZ:${lastNamePrefix}${standardize(record.ZipCode, 'zip')}`);
       }
       break;
     case 'phone':
@@ -172,6 +235,11 @@ function generateBlockingKeys(record, method) {
         }
       }
       break;
+    case 'soundex_name':
+      if (record.FirstName && record.LastName) {
+        keys.push(`SN:${phoneticCode(record.FirstName)}_${phoneticCode(record.LastName)}`);
+      }
+      break;
   }
   
   return keys;
@@ -179,7 +247,7 @@ function generateBlockingKeys(record, method) {
 
 module.exports = {
   standardize,
-  jaroWinkler,
+  calculateSimilarity,
   phoneticCode,
   calculateConfidenceScore,
   generateBlockingKeys

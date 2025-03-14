@@ -1,0 +1,17 @@
+config {
+  type: "declaration",
+  database: "local-dimension-296708",
+  schema: "source",
+  name: "customer_data",
+  description: "Source customer data for matching",
+  columns: {
+    customer_id: "Unique customer identifier",
+    first_name: "Customer first name",
+    last_name: "Customer last name",
+    email_address: "Customer email address",
+    street_address: "Street address",
+    city: "City",
+    state: "State code",
+    postal_code: "ZIP/Postal code"
+  }
+} 

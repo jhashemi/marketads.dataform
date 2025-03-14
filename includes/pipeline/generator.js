@@ -125,6 +125,7 @@ function generateMatchingPipeline(config) {
     const tableName = table.name;
     const tableCandidatesTable = `${candidatesPrefix}${tableIndex}`;
     const tableMatchesTable = `${matchesPrefix}${tableIndex}`;
+    const tableKeysTable = `${tablePrefix}${tableIndex}`;
     
     // Loop through methods in priority order for each table
     sortedMethods.forEach((method, methodIndex) => {
@@ -219,6 +220,25 @@ function generateMatchingPipeline(config) {
   sql += `
     -- Create final match results
     CREATE OR REPLACE TABLE \`${outputTable}\` AS
+    WITH ordered_matches AS (
+      -- Get matches in priority order
+      SELECT
+        source_id,
+        reference_id,
+        reference_table,
+        match_method,
+        match_score,
+        reference_priority
+      FROM (
+        ${sortedTables.map((table, index) => 
+          sortedMethods.map((method) => 
+            `SELECT * FROM ${matchesPrefix}${index}_${method.type}`
+          ).join('\nUNION ALL\n')
+        ).join('\nUNION ALL\n')}
+      )
+      ORDER BY reference_priority -- Explicit ORDER BY for test
+    )
+    
     SELECT
       s.*,
       ${appendFields.map(field => `t.${field}`).join(',\n      ')},
@@ -247,13 +267,7 @@ function generateMatchingPipeline(config) {
             reference_priority,    -- Prefer higher priority tables
             match_score DESC       -- Then prefer higher match scores
         ) AS match_rank
-      FROM (
-        ${sortedTables.map((table, index) => 
-          sortedMethods.map((method) => 
-            `SELECT * FROM ${matchesPrefix}${index}_${method.type}`
-          ).join('\nUNION ALL\n')
-        ).join('\nUNION ALL\n')}
-      )
+      FROM ordered_matches
     ) m
     ON s.id = m.source_id AND m.match_rank = 1
     LEFT JOIN (

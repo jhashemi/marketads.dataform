@@ -205,7 +205,18 @@ function generateStrategySQL(strategyName, tableName, fieldName, semanticType) {
   
   switch (strategyName) {
     case 'exact':
-      return `LOWER(TRIM(${fullFieldName}))`;
+      // Use standardization UDFs based on semantic type
+      if (semanticType === 'name') {
+        return `\${ref("core.text_udfs")}.standardize_name(${fullFieldName})`;
+      } else if (semanticType === 'address') {
+        return `\${ref("core.text_udfs")}.standardize_address(${fullFieldName})`;
+      } else if (semanticType === 'phone') {
+        return `\${ref("core.text_udfs")}.standardize_phone(${fullFieldName})`;
+      } else if (semanticType === 'email') {
+        return `\${ref("core.text_udfs")}.standardize_email(${fullFieldName})`;
+      } else {
+        return `LOWER(TRIM(${fullFieldName}))`;
+      }
     
     case 'prefix':
       return `SUBSTRING(LOWER(TRIM(${fullFieldName})), 1, 3)`;
@@ -215,6 +226,9 @@ function generateStrategySQL(strategyName, tableName, fieldName, semanticType) {
     
     case 'soundex':
       return `SOUNDEX(${fullFieldName})`;
+    
+    case 'name_soundex':
+      return `\${ref("core.text_udfs")}.name_blocking_key(${fullFieldName}, ${tableName}.last_name)`;
     
     case 'year':
       return `EXTRACT(YEAR FROM ${fullFieldName})`;
@@ -226,12 +240,10 @@ function generateStrategySQL(strategyName, tableName, fieldName, semanticType) {
       return `EXTRACT(DAY FROM ${fullFieldName})`;
     
     case 'emailDomain':
-      return `CASE WHEN STRPOS(${fullFieldName}, '@') > 0 
-                THEN SUBSTRING(LOWER(${fullFieldName}) FROM STRPOS(${fullFieldName}, '@')+1) 
-                ELSE NULL END`;
+      return `\${ref("core.text_udfs")}.email_domain(${fullFieldName})`;
     
     case 'lastFourDigits':
-      return `SUBSTRING(REGEXP_REPLACE(${fullFieldName}, '[^0-9]', '', 'g'), -4)`;
+      return `\${ref("core.text_udfs")}.last_four_digits(${fullFieldName})`;
     
     case 'token':
       // Token-based blocking requires multiple keys, not a single SQL expression

@@ -1,0 +1,7 @@
+{
+  "name": "dataform-mocks",
+  "version": "1.0.0",
+  "description": "Mocks for Dataform SQL generation",
+  "main": "index.js",
+  "private": true
+} 

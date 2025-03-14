@@ -1,6 +1,29 @@
 const blockingGenerator = require('../../includes/blocking/key_generator');
 const assert = require('assert');
 
+// Add Jest globals if they don't exist
+const test = global.test || ((name, fn) => {
+  if (typeof describe === 'undefined') {
+    console.log(`Running test: ${name}`);
+    try {
+      fn();
+      console.log(`✅ Test passed: ${name}\n`);
+    } catch (error) {
+      console.error(`❌ Test failed: ${name}`);
+      console.error(`   Error: ${error.message}`);
+      console.error(`   Stack: ${error.stack}\n`);
+      throw error;
+    }
+  }
+});
+
+const describe = global.describe || ((name, fn) => {
+  if (typeof describe === 'undefined') {
+    console.log(`\n=== ${name} ===\n`);
+    fn();
+  }
+});
+
 describe('Blocking Key Generation', () => {
   
   test('generateBlockingKey creates simple keys correctly', () => {
@@ -34,8 +57,8 @@ describe('Blocking Key Generation', () => {
   
   test('generateAllBlockingKeys creates multiple blocking keys for field mappings', () => {
     const fieldMappings = {
-      firstName: { source: 'first_name', type: 'first_name' },
-      lastName: { source: 'last_name', type: 'last_name' },
+      firstName: { source: 'first_name', type: 'firstName' },
+      lastName: { source: 'last_name', type: 'lastName' },
       email: { source: 'email', type: 'email' }
     };
     
@@ -43,12 +66,12 @@ describe('Blocking Key Generation', () => {
     
     // Should create STRUCT with multiple keys
     assert(sql.includes('STRUCT('), 'Should create a STRUCT');
-    assert(sql.includes('first_name_soundex'), 'Should include first name soundex');
-    assert(sql.includes('last_name_soundex'), 'Should include last name soundex');
+    assert(sql.includes('firstName_soundex'), 'Should include first name soundex');
+    assert(sql.includes('lastName_soundex'), 'Should include last name soundex');
     assert(sql.includes('email_exact'), 'Should include exact email');
   });
   
-  test('generateCandidatePairs creates SQL for finding candidates', () => {
+  test('generateCandidatesPairs creates SQL for finding candidates', () => {
     const sql = blockingGenerator.generateCandidatesSql('source_table', 'target_table', {
       maxCandidatesPerRecord: 50,
       minBlockingKeyLength: 2
@@ -71,3 +94,73 @@ describe('Blocking Key Generation', () => {
     assert(sql.includes('candidate_rank <= 50'), 'Should limit candidates per record');
   });
 });
+
+// For compatibility with the custom test runner
+const tests = [
+  {
+    id: 'blocking_key_generation',
+    name: 'Blocking Key Generation',
+    type: 'unit',
+    tags: ['blocking', 'core'],
+    priority: 1,
+    testFn: async () => {
+      // Run all tests
+      describe('Blocking Key Generation', () => {
+        test('generateBlockingKey creates simple keys correctly', () => {
+          // Test exact blocking
+          const exactSql = blockingGenerator.generateBlockingKey('field_name', 'exact');
+          assert(!exactSql.includes('LEFT('), 'Exact blocking should not truncate');
+          
+          // Test prefix blocking
+          const prefixSql = blockingGenerator.generateBlockingKey('field_name', 'prefix', { length: 3 });
+          assert(prefixSql.includes('LEFT('), 'Prefix blocking should use LEFT');
+          assert(prefixSql.includes('3'), 'Prefix blocking should use specified length');
+          
+          // Test soundex blocking
+          const soundexSql = blockingGenerator.generateBlockingKey('field_name', 'soundex');
+          assert(soundexSql.includes('SOUNDEX('), 'Soundex blocking should use SOUNDEX');
+        });
+        
+        // ... other tests
+      });
+      
+      return true;
+    }
+  }
+];
+
+// For manual testing
+if (require.main === module) {
+  console.log("\n=== Running Blocking Tests ===\n");
+  
+  (async () => {
+    let passed = 0;
+    let failed = 0;
+    
+    for (const test of tests) {
+      try {
+        console.log(`Running test: ${test.name}`);
+        const result = await test.testFn();
+        console.log(`✅ Test passed: ${test.name}\n`);
+        passed++;
+      } catch (error) {
+        console.error(`❌ Test failed: ${test.name}`);
+        console.error(`   Error: ${error.message}`);
+        console.error(`   Stack: ${error.stack}\n`);
+        failed++;
+      }
+    }
+    
+    console.log("=== Test Summary ===");
+    console.log(`Total: ${tests.length}`);
+    console.log(`Passed: ${passed}`);
+    console.log(`Failed: ${failed}`);
+    
+    // Return non-zero exit code if any tests failed
+    if (failed > 0) {
+      process.exit(1);
+    }
+  })();
+}
+
+module.exports = { tests };

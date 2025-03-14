@@ -2,6 +2,12 @@
   "version": "0.2.0",
   "configurations": [
     {
+        "command": "npm start",
+        "name": "Run npm start",
+        "request": "launch",
+        "type": "node-terminal"
+    },
+    {
       "type": "node",
       "request": "launch",
       "name": "Debug Current Test File",
@@ -13,20 +19,7 @@
       ],
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen",
-      "disableOptimisticBPs": true
-    },
-    {
-      "type": "node",
-      "request": "launch",
-      "name": "Debug All Tests",
-      "program": "${workspaceFolder}/node_modules/jest/bin/jest",
-      "args": [
-        "--runInBand",
-        "--no-cache"
-      ],
-      "console": "integratedTerminal",
-      "internalConsoleOptions": "neverOpen",
-      "disableOptimisticBPs": true
+      
     },
     {
       "type": "node",
@@ -39,7 +32,6 @@
       ],
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen",
-      "disableOptimisticBPs": true
     }
   ]
 } 

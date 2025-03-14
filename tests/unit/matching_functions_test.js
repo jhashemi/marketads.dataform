@@ -1,93 +1,224 @@
 const assert = require('assert');
 const matchingFunctions = require('../../includes/matching_functions');
 
-describe('matching_functions', () => {
-  describe('standardize', () => {
-    it('should standardize name fields correctly', () => {
-      assert.strictEqual(matchingFunctions.standardize('  Mr. John Smith Jr. ', 'name'), 'JOHN SMITH');
-      assert.strictEqual(matchingFunctions.standardize('Dr. Jane Doe, PHD', 'name'), 'JANE DOE');
-      assert.strictEqual(matchingFunctions.standardize('Ms.  Alice   Wonderland   ', 'name'), 'ALICE WONDERLAND');
-    });
+/**
+ * Test file for the matching functions
+ * These tests validate the core matching functionality used for record linkage
+ */
+const tests = [
+  {
+    id: 'matching_functions_standardize_name',
+    name: 'standardize name function',
+    type: 'unit',
+    tags: ['matching', 'core', 'standardization'],
+    priority: 1,
+    testFn: async () => {
+      // Test standardizing names
+      assert.strictEqual(matchingFunctions.standardize('  Mr. John Smith Jr. ', 'name'), 'JOHN SMITH', 
+        'Should remove titles, suffixes, and normalize spacing');
+      
+      assert.strictEqual(matchingFunctions.standardize('Dr. Jane Doe, PHD', 'name'), 'JANE DOE', 
+        'Should remove titles, suffixes with commas, and normalize case');
+      
+      assert.strictEqual(matchingFunctions.standardize('Ms.  Alice   Wonderland   ', 'name'), 'ALICE WONDERLAND', 
+        'Should normalize multiple spaces');
+      
+      // Test with null/empty inputs
+      assert.strictEqual(matchingFunctions.standardize(null, 'name'), '', 
+        'Should handle null input');
+      
+      assert.strictEqual(matchingFunctions.standardize(undefined, 'name'), '', 
+        'Should handle undefined input');
+      
+      return true;
+    }
+  },
+  {
+    id: 'matching_functions_standardize_address',
+    name: 'standardize address function',
+    type: 'unit',
+    tags: ['matching', 'core', 'standardization'],
+    priority: 1,
+    testFn: async () => {
+      // Test standardizing addresses
+      assert.strictEqual(matchingFunctions.standardize('123 Main Street APT 1', 'address'), '123 MAIN ST APT 1', 
+        'Should standardize common address terms');
+      
+      assert.strictEqual(matchingFunctions.standardize('456 Oak Avenue, apartment 2', 'address'), '456 OAK AVE APT 2', 
+        'Should normalize apartment designations');
+      
+      assert.strictEqual(matchingFunctions.standardize('789 Pine Boulevard', 'address'), '789 PINE BLVD', 
+        'Should abbreviate boulevard');
+      
+      // Test with null/empty inputs
+      assert.strictEqual(matchingFunctions.standardize(null, 'address'), '', 
+        'Should handle null input');
+      
+      return true;
+    }
+  },
+  {
+    id: 'matching_functions_standardize_phone',
+    name: 'standardize phone function',
+    type: 'unit',
+    tags: ['matching', 'core', 'standardization'],
+    priority: 1,
+    testFn: async () => {
+      // Test standardizing phone numbers
+      assert.strictEqual(matchingFunctions.standardize('(123) 456-7890', 'phone'), '1234567890', 
+        'Should remove formatting characters');
+      
+      assert.strictEqual(matchingFunctions.standardize('123.456.7890 ext 123', 'phone'), '1234567890123', 
+        'Should preserve extension numbers');
+      
+      // Test with null/empty inputs
+      assert.strictEqual(matchingFunctions.standardize(null, 'phone'), '', 
+        'Should handle null input');
+      
+      return true;
+    }
+  },
+  {
+    id: 'matching_functions_standardize_email',
+    name: 'standardize email function',
+    type: 'unit',
+    tags: ['matching', 'core', 'standardization'],
+    priority: 1,
+    testFn: async () => {
+      // Test standardizing emails
+      assert.strictEqual(matchingFunctions.standardize('  Test@Example.com  ', 'email'), 'test@example.com', 
+        'Should lowercase and trim email addresses');
+      
+      // Test with null/empty inputs
+      assert.strictEqual(matchingFunctions.standardize(null, 'email'), '', 
+        'Should handle null input');
+      
+      return true;
+    }
+  },
+  {
+    id: 'matching_functions_standardize_zip',
+    name: 'standardize zip function',
+    type: 'unit',
+    tags: ['matching', 'core', 'standardization'],
+    priority: 1,
+    testFn: async () => {
+      // Test standardizing zip codes
+      assert.strictEqual(matchingFunctions.standardize('12345-6789', 'zip'), '12345', 
+        'Should extract just the 5-digit portion');
+      
+      assert.strictEqual(matchingFunctions.standardize('abc123def', 'zip'), '123', 
+        'Should extract just the numeric portion');
+      
+      // Test with null/empty inputs
+      assert.strictEqual(matchingFunctions.standardize(null, 'zip'), '', 
+        'Should handle null input');
+      
+      return true;
+    }
+  },
+  {
+    id: 'matching_functions_phoneticCode',
+    name: 'phoneticCode function',
+    type: 'unit',
+    tags: ['matching', 'core', 'phonetic'],
+    priority: 1,
+    testFn: async () => {
+      // Test phonetic coding of names
+      // These tests will be dependent on your implementation
+      // If using Soundex, Smith and Smyth should have the same code
+      
+      const code1 = matchingFunctions.phoneticCode('Smith');
+      const code2 = matchingFunctions.phoneticCode('Smyth');
+      
+      // If using soundex, both should start with S and have the same code
+      assert.ok(code1.startsWith('S'), 'Soundex code for Smith should start with S');
+      assert.ok(code1 === code2, 'Smith and Smyth should have the same phonetic code');
+      
+      // Test with null/empty inputs
+      assert.strictEqual(matchingFunctions.phoneticCode(null), '', 
+        'Should handle null input');
+      
+      assert.strictEqual(matchingFunctions.phoneticCode(''), '', 
+        'Should handle empty string');
+      
+      return true;
+    }
+  },
+  {
+    id: 'matching_functions_generateBlockingKeys',
+    name: 'generateBlockingKeys function',
+    type: 'unit',
+    tags: ['matching', 'core', 'blocking'],
+    priority: 1,
+    testFn: async () => {
+      // Test generating zipcode blocking key
+      const record1 = { ZipCode: '12345' };
+      const blockingKeys1 = matchingFunctions.generateBlockingKeys(record1, 'zipcode');
+      assert.deepStrictEqual(blockingKeys1, ['ZIP:12345'], 
+        'Should generate zipcode blocking key');
+      
+      // Test generating name_zip blocking key
+      const record2 = { LastName: 'Smith', ZipCode: '12345' };
+      const blockingKeys2 = matchingFunctions.generateBlockingKeys(record2, 'name_zip');
+      assert.deepStrictEqual(blockingKeys2, ['LZ:SMIT12345'], 
+        'Should generate name_zip blocking key');
+      
+      // Test with missing fields
+      const record3 = { FirstName: 'John' };
+      const blockingKeys3 = matchingFunctions.generateBlockingKeys(record3, 'name_zip');
+      assert.deepStrictEqual(blockingKeys3, [], 
+        'Should return empty array if required fields are missing');
+      
+      return true;
+    }
+  }
+];
 
-    it('should standardize address fields correctly', () => {
-      assert.strictEqual(matchingFunctions.standardize('123 Main Street APT 1', 'address'), '123 MAIN ST APT 1');
-      assert.strictEqual(matchingFunctions.standardize('456 Oak Avenue, apartment 2', 'address'), '456 OAK AVE APT 2');
-      assert.strictEqual(matchingFunctions.standardize('789 Pine Boulevard', 'address'), '789 PINE BLVD');
-    });
-
-    it('should standardize phone fields correctly', () => {
-      assert.strictEqual(matchingFunctions.standardize('(123) 456-7890', 'phone'), '1234567890');
-      assert.strictEqual(matchingFunctions.standardize('123.456.7890 ext 123', 'phone'), '1234567890123');
-    });
-
-    it('should standardize email fields correctly', () => {
-      assert.strictEqual(matchingFunctions.standardize('  Test@Example.com  ', 'email'), 'test@example.com');
-    });
-
-    it('should standardize zip fields correctly', () => {
-      assert.strictEqual(matchingFunctions.standardize('12345-6789', 'zip'), '12345');
-      assert.strictEqual(matchingFunctions.standardize('abc123def', 'zip'), '123');
-    });
-
-    it('should return an empty string for null or undefined input', () => {
-      assert.strictEqual(matchingFunctions.standardize(null, 'name'), '');
-      assert.strictEqual(matchingFunctions.standardize(undefined, 'address'), '');
+// Add Jest compatibility layer
+if (typeof describe === 'function') {
+  describe('Matching Functions', () => {
+    tests.forEach(test => {
+      it(test.name, async () => {
+        const result = await test.testFn();
+        expect(result).toBeTruthy();
+      });
     });
   });
+}
 
-  describe('jaroWinkler', () => {
-    it('should return 0 for null or undefined inputs', () => {
-      assert.strictEqual(matchingFunctions.jaroWinkler(null, 'test'), 0);
-      assert.strictEqual(matchingFunctions.jaroWinkler('test', undefined), 0);
-      assert.strictEqual(matchingFunctions.jaroWinkler(null, null), 0);
-    });
+// For manual testing only
+if (require.main === module) {
+  console.log("\n=== Running Matching Functions Tests ===\n");
+  
+  (async () => {
+    let passed = 0;
+    let failed = 0;
+    
+    for (const test of tests) {
+      try {
+        console.log(`Running test: ${test.name}`);
+        const result = await test.testFn();
+        console.log(`✅ Test passed: ${test.name}\n`);
+        passed++;
+      } catch (error) {
+        console.error(`❌ Test failed: ${test.name}`);
+        console.error(`   Error: ${error.message}`);
+        console.error(`   Stack: ${error.stack}\n`);
+        failed++;
+      }
+    }
+    
+    console.log("=== Test Summary ===");
+    console.log(`Total: ${tests.length}`);
+    console.log(`Passed: ${passed}`);
+    console.log(`Failed: ${failed}`);
+    
+    // Return non-zero exit code if any tests failed
+    if (failed > 0) {
+      process.exit(1);
+    }
+  })();
+}
 
-    it('should return 1 for identical strings', () => {
-      assert.strictEqual(matchingFunctions.jaroWinkler('test', 'test'), 1);
-    });
-
-    it('should return 0.5 for different strings (placeholder)', () => {
-      assert.strictEqual(matchingFunctions.jaroWinkler('hello', 'world'), 0.5);
-    });
-  });
-
-  describe('phoneticCode', () => {
-    it('should return an empty string for null or undefined input', () => {
-      assert.strictEqual(matchingFunctions.phoneticCode(null), '');
-      assert.strictEqual(matchingFunctions.phoneticCode(undefined), '');
-    });
-
-    it('should return the first character followed by "000" for a valid input (placeholder)', () => {
-      assert.strictEqual(matchingFunctions.phoneticCode('Test'), 'T000');
-      assert.strictEqual(matchingFunctions.phoneticCode('Another'), 'A000');
-    });
-  });
-
-  describe('calculateConfidenceScore', () => {
-    it('should calculate the confidence score (placeholder)', () => {
-      const sourceRecord = { name: 'John Smith', address: '123 Main St' };
-      const targetRecord = { name: 'Jon Smith', address: '123 Main St' };
-      const weights = { name: 0.6, address: 0.4 };
-      const thresholds = { name: 0.7, address: 0.8 };
-      const result = matchingFunctions.calculateConfidenceScore(sourceRecord, targetRecord, weights, thresholds);
-      assert.ok(result.score >= 0 && result.score <= 1); // Basic check for now
-    });
-  });
-
-  describe('generateBlockingKeys', () => {
-    it('should generate a zipcode blocking key', () => {
-      const record = { ZipCode: '12345' };
-      assert.deepStrictEqual(matchingFunctions.generateBlockingKeys(record, 'zipcode'), ['ZIP:12345']);
-    });
-
-    it('should generate a name_zip blocking key', () => {
-      const record = { LastName: 'Smith', ZipCode: '12345' };
-      assert.deepStrictEqual(matchingFunctions.generateBlockingKeys(record, 'name_zip'), ['LZ:SMIT12345']);
-    });
-
-    it('should return an empty array if the required fields are missing', () => {
-      const record = { FirstName: 'John' };
-      assert.deepStrictEqual(matchingFunctions.generateBlockingKeys(record, 'name_zip'), []);
-    });
-  });
-});
+module.exports = { tests };

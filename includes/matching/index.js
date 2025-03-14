@@ -1,6 +1,6 @@
 /**
  * Matching Module
- * 
+ *
  * This module serves as the entry point for all matching functionality.
  * It composes the matching engine, scorer, and validator components
  * following the Interface Segregation Principle and Separation of Concerns.
@@ -9,7 +9,6 @@
 const { MatchEngine } = require('./engine');
 const { MatchScorer } = require('./scorer');
 const { MatchValidator } = require('./validator');
-const { DedupeResolver } = require('./dedupe-integration');
 const { createMatchingConfig } = require('../config/matching');
 
 /**
@@ -26,14 +25,6 @@ function createMatchingSystem(config = {}) {
   const scorer = new MatchScorer(matchingConfig);
   const validator = new MatchValidator(matchingConfig);
   
-  // Optional ML-based deduplication (if enabled in config)
-  let dedupeResolver = null;
-  if (config.useDedupeResolver) {
-    dedupeResolver = new DedupeResolver({
-      modelPath: config.dedupeModelPath
-    });
-  }
-  
   /**
    * Evaluate a match between two records
    * @param {Object} sourceRecord - Source record
@@ -42,12 +33,11 @@ function createMatchingSystem(config = {}) {
    * @returns {Object} Match result with confidence score
    */
   async function evaluateMatch(sourceRecord, targetRecord, options) {
-    const { 
-      sourceFieldMappings, 
-      targetFieldMappings, 
+    const {
+      sourceFieldMappings,
+      targetFieldMappings,
       requiredFields = [],
-      priorityFields = [],
-      useML = false
+      priorityFields = []
     } = options;
     
     // Validate candidate records
@@ -61,22 +51,7 @@ function createMatchingSystem(config = {}) {
       );
     }
     
-    // Use ML-based matching if available and requested
-    if (useML && dedupeResolver && dedupeResolver.trained) {
-      try {
-        return await dedupeResolver.predict(
-          sourceRecord,
-          targetRecord,
-          sourceFieldMappings,
-          targetFieldMappings
-        );
-      } catch (error) {
-        console.warn('ML-based matching failed, falling back to rule-based:', error.message);
-        // Fall back to rule-based if ML fails
-      }
-    }
-    
-    // Use rule-based matching (standard approach)
+    // Use rule-based matching
     const matchResult = engine.evaluateMatch(sourceRecord, targetRecord, {
       sourceFieldMappings,
       targetFieldMappings,
@@ -128,28 +103,6 @@ function createMatchingSystem(config = {}) {
     return scorer.calculateBatchMetrics(matches);
   }
   
-  /**
-   * Trains the ML-based matching model with labeled examples
-   * @param {Array<Object>} trainingPairs - Array of labeled source-target pairs
-   * @param {Array<Object>} sourceFieldMappings - Source field mappings
-   * @param {Array<Object>} targetFieldMappings - Target field mappings
-   * @returns {Promise<void>} Promise that resolves when training is complete
-   */
-  async function trainMLModel(trainingPairs, sourceFieldMappings, targetFieldMappings) {
-    if (!dedupeResolver) {
-      throw new Error('ML-based matching not enabled (set useDedupeResolver in config)');
-    }
-    
-    // Initialize resolver if needed
-    if (!dedupeResolver.deduper) {
-      await dedupeResolver.initialize(sourceFieldMappings);
-    }
-    
-    // Train the model
-    await dedupeResolver.train(trainingPairs, sourceFieldMappings, targetFieldMappings);
-    
-    return { success: true, message: 'Model trained successfully' };
-  }
   
   /**
    * Finds matches for a record in a set of target records
@@ -159,31 +112,12 @@ function createMatchingSystem(config = {}) {
    * @returns {Promise<Array<Object>>} Array of matches with scores
    */
   async function findMatches(sourceRecord, targetRecords, options) {
-    const { 
-      sourceFieldMappings, 
-      targetFieldMappings, 
+    const {
+      sourceFieldMappings,
+      targetFieldMappings,
       threshold = 0.5,
-      useML = false,
       maxResults = 10
     } = options;
-    
-    // Use ML-based matching if available and requested
-    if (useML && dedupeResolver && dedupeResolver.trained) {
-      try {
-        const matches = await dedupeResolver.findMatches(
-          sourceRecord,
-          targetRecords,
-          sourceFieldMappings,
-          targetFieldMappings,
-          threshold
-        );
-        
-        return matches.slice(0, maxResults);
-      } catch (error) {
-        console.warn('ML-based matching failed, falling back to rule-based:', error.message);
-        // Fall back to rule-based if ML fails
-      }
-    }
     
     // Use rule-based matching
     const matches = [];
@@ -221,21 +155,7 @@ function createMatchingSystem(config = {}) {
    * @returns {Promise<Array<Array<Object>>>} Clusters of similar records
    */
   async function clusterRecords(records, fieldMappings, options = {}) {
-    const { threshold = 0.5, useML = false } = options;
-    
-    // Use ML-based clustering if available and requested
-    if (useML && dedupeResolver && dedupeResolver.trained) {
-      try {
-        return await dedupeResolver.clusterRecords(
-          records,
-          fieldMappings,
-          threshold
-        );
-      } catch (error) {
-        console.warn('ML-based clustering failed, falling back to rule-based:', error.message);
-        // Fall back to rule-based if ML fails
-      }
-    }
+    const { threshold = 0.5 } = options;
     
     // Simple rule-based clustering
     const clusters = [];
@@ -283,7 +203,6 @@ function createMatchingSystem(config = {}) {
     canMergeRecords,
     getMatchStrategies,
     calculateBatchMetrics,
-    trainMLModel,
     findMatches,
     clusterRecords,
     
@@ -291,7 +210,6 @@ function createMatchingSystem(config = {}) {
     engine,
     scorer,
     validator,
-    dedupeResolver,
     
     // Expose the configuration
     config: matchingConfig
@@ -302,6 +220,5 @@ module.exports = {
   createMatchingSystem,
   MatchEngine,
   MatchScorer,
-  MatchValidator,
-  DedupeResolver
-}; 
+  MatchValidator
+};

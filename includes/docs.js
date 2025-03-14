@@ -414,5 +414,4 @@ DATE: `Indicates the date and time of a particular event or transaction. This co
 Individual_Match_Flag: `Indicates whether the individual's information matches the information on file with the National Change of Address (NCOA) database. A value of 'Y' indicates that the individual's information matches the NCOA database, while a value of 'N' indicates that the individual's information does not match the NCOA database. This information can be used to verify the accuracy of the individual's address and to identify individuals who have recently moved.`, 
 Email_Score: `Indicates the likelihood that an email address is valid and deliverable. Higher scores indicate a higher likelihood of deliverability. This column can be used to improve the accuracy of email marketing campaigns and reduce the number of bounced emails.`, 
 WirelessPhone: `Indicates the person's cell phone number. This column contains a variety of phone numbers, including mobile phone numbers and landlines. The phone numbers are formatted in a variety of ways, including with and without hyphens and parentheses. This column can be used to contact the person by phone.`, 
-};
-module.exports = {columns}
+};module.exports = {columns}

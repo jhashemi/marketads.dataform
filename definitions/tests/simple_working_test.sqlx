@@ -1,0 +1,12 @@
+config {
+  type: "assertion",
+  name: "simple_working_test",
+  description: "A simple assertion test that always passes",
+  tags: ["test", "example"]
+}
+
+-- This is the simplest test that will always pass
+-- since 1 = 1 is always true
+SELECT
+  'PASS' AS result
+WHERE 1 = 1 

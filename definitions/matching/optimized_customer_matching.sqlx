@@ -1,0 +1,136 @@
+config {
+  type: "table",
+  name: "optimized_customer_matches",
+  description: "Customer matching using optimized native BigQuery functions",
+  columns: {
+    source_id: "Source customer ID",
+    target_id: "Matched customer ID",
+    match_confidence: "Confidence score of the match (0-1)",
+    match_type: "Type of match (exact, phonetic, fuzzy)",
+    match_details: "Detailed match information"
+  },
+  tags: ["matching", "customers"]
+}
+
+-- Import helper functions
+js {
+  const blocking = require("../includes/blocking_functions");
+  
+  // Define field mappings between source and reference data
+  const fieldMappings = {
+    firstName: { source: "first_name", target: "first_name" },
+    lastName: { source: "last_name", target: "last_name" },
+    email: { source: "email_address", target: "email" },
+    address: { source: "street_address", target: "address_line_1" },
+    city: { source: "city", target: "city" },
+    state: { source: "state", target: "state_code" },
+    zip: { source: "postal_code", target: "zip" }
+  };
+  
+  // Define matching thresholds
+  const EXACT_MATCH = 1.0;
+  const HIGH_CONFIDENCE = 0.9;
+  const MEDIUM_CONFIDENCE = 0.8;
+  const LOW_CONFIDENCE = 0.7;
+}
+
+-- This example uses the improved functions and UDFs for more efficient matching
+
+-- Step 1: First create blocking keys to reduce comparison space
+WITH source_blocking_keys AS (
+  SELECT 
+    customer_id,
+    -- Use native SOUNDEX for phonetic matching
+    SOUNDEX(first_name) AS first_name_soundex,
+    SOUNDEX(last_name) AS last_name_soundex,
+    -- Use our UDFs for standardization
+    ${ref("core.text_udfs")}.standardize_email(email_address) AS email_std,
+    ${ref("core.text_udfs")}.standardize_phone(phone) AS phone_std,
+    SUBSTR(postal_code, 1, 5) AS zip5
+  FROM ${ref("sources.customer_data")}
+),
+
+reference_blocking_keys AS (
+  SELECT 
+    id,
+    -- Use native SOUNDEX for phonetic matching
+    SOUNDEX(first_name) AS first_name_soundex,
+    SOUNDEX(last_name) AS last_name_soundex,
+    -- Use our UDFs for standardization
+    ${ref("core.text_udfs")}.standardize_email(email) AS email_std,
+    ${ref("core.text_udfs")}.standardize_phone(phone) AS phone_std,
+    SUBSTR(zip, 1, 5) AS zip5
+  FROM ${ref("sources.customer_master")}
+),
+
+-- Step 2: Match records using efficient blocking and ML.SIMILARITY
+matches AS (
+  SELECT
+    s.customer_id AS source_id,
+    r.id AS target_id,
+    -- Calculate match confidence using ML.SIMILARITY for more accurate results
+    GREATEST(
+      -- Exact email match (highest confidence)
+      CASE WHEN s.email_std = r.email_std AND s.email_std IS NOT NULL THEN ${EXACT_MATCH} ELSE 0 END,
+      
+      -- Name + phone match
+      CASE 
+        WHEN s.first_name_soundex = r.first_name_soundex 
+          AND s.last_name_soundex = r.last_name_soundex
+          AND s.phone_std = r.phone_std
+          AND s.phone_std IS NOT NULL
+        THEN ${HIGH_CONFIDENCE}
+        ELSE 0
+      END,
+      
+      -- Name + address match using similarity functions
+      CASE
+        WHEN s.first_name_soundex = r.first_name_soundex 
+          AND s.last_name_soundex = r.last_name_soundex
+          AND s.zip5 = r.zip5
+          AND ${ref("core.text_udfs")}.address_similarity(s.street_address, r.address_line_1) > ${MEDIUM_CONFIDENCE}
+        THEN ${MEDIUM_CONFIDENCE}
+        ELSE 0
+      END
+    ) AS match_confidence,
+    
+    -- Match type classification
+    CASE
+      WHEN s.email_std = r.email_std AND s.email_std IS NOT NULL THEN 'EMAIL_EXACT'
+      WHEN s.first_name_soundex = r.first_name_soundex AND s.last_name_soundex = r.last_name_soundex AND s.phone_std = r.phone_std AND s.phone_std IS NOT NULL THEN 'NAME_PHONE'
+      WHEN s.first_name_soundex = r.first_name_soundex AND s.last_name_soundex = r.last_name_soundex AND s.zip5 = r.zip5 THEN 'NAME_ADDRESS'
+      ELSE 'PARTIAL_MATCH'
+    END AS match_type,
+    
+    -- Detailed match information as a STRUCT
+    STRUCT(
+      ${ref("core.text_udfs")}.text_similarity(s.first_name, r.first_name) AS first_name_similarity,
+      ${ref("core.text_udfs")}.text_similarity(s.last_name, r.last_name) AS last_name_similarity,
+      ${ref("core.text_udfs")}.text_similarity(s.email_address, r.email) AS email_similarity,
+      ${ref("core.text_udfs")}.address_similarity(s.street_address, r.address_line_1) AS address_similarity,
+      (s.first_name_soundex = r.first_name_soundex) AS first_name_phonetic_match,
+      (s.last_name_soundex = r.last_name_soundex) AS last_name_phonetic_match,
+      (s.zip5 = r.zip5) AS zip_match
+    ) AS match_details
+  FROM source_blocking_keys s
+  JOIN reference_blocking_keys r
+    -- Efficient blocking join conditions
+    ON (
+      -- Use multiple blocking strategies for better recall
+      (s.zip5 = r.zip5)
+      OR (s.email_std = r.email_std AND s.email_std IS NOT NULL)
+      OR (s.phone_std = r.phone_std AND s.phone_std IS NOT NULL)
+      OR (s.first_name_soundex = r.first_name_soundex AND s.last_name_soundex = r.last_name_soundex)
+    )
+)
+
+-- Final output with high confidence matches only
+SELECT
+  source_id,
+  target_id,
+  match_confidence,
+  match_type,
+  match_details
+FROM matches
+WHERE match_confidence >= ${LOW_CONFIDENCE}
+ORDER BY source_id, match_confidence DESC 

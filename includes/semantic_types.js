@@ -154,12 +154,10 @@ function getPotentialFieldNames(semanticType) {
 }
 
 // Export all functions and constants
-module.exports = { 
+module.exports = {
   semanticTypeMap,
-  validationPatterns,
   getSemanticType,
   isSemanticType,
   validateValue,
-  standardizeSql,
   getPotentialFieldNames
 };

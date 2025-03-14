@@ -1,0 +1,14 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+- Use [run_tests.js](mdc:scripts/run_tests.js) as the test runner from the root directory.
+- Adhere to [DATAFORM_BEST_PRACTICES.md](mdc:docs/DATAFORM_BEST_PRACTICES.md)
+- Use the [VALIDATION_FRAMEWORK.md](mdc:docs/VALIDATION_FRAMEWORK.md)
+- [testing_plan.md](mdc:testing_plan.md)
+- For unit tests
+    "test:runner": "node scripts/run_tests.js",
+    "test:runner:unit": "node scripts/run_tests.js --type unit",
+    "test:runner:integration": "node scripts/run_tests.js --type integration",
+    "test:report": "node scripts/run_tests.js --report --output=test_report.txt",

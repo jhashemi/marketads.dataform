@@ -95,14 +95,22 @@ class ValidationRegistry {
   }
   
   /**
-   * Initialize the registry
-   * @param {string} testDirectory - Directory containing test files
+   * Initialize the validation registry
+   * @param {string|Array<string>} testDirectory - Directory or array of directories to scan for test files
    * @returns {Promise<boolean>} True if successful
    */
   async initialize(testDirectory = null) {
     try {
       if (testDirectory) {
-        await this.scanTestFiles(testDirectory);
+        if (Array.isArray(testDirectory)) {
+          // Handle array of directories
+          for (const dir of testDirectory) {
+            await this.scanTestFiles(dir);
+          }
+        } else {
+          // Handle single directory
+          await this.scanTestFiles(testDirectory);
+        }
       }
       
       this.sortTestsByDependency();
@@ -395,21 +403,25 @@ class ValidationRegistry {
   }
   
   /**
-   * Scan test files for tests
-   * @param {string} testDirectory - Directory containing test files
+   * Scan directory for test files and register tests
+   * @param {string} testDirectory - Directory to scan
    * @returns {Promise<Array<string>>} Registered test IDs
    */
   async scanTestFiles(testDirectory) {
     try {
+      console.log(`Scanning for test files in directory: ${testDirectory}`);
       const testFiles = this._findJsFiles(testDirectory);
+      console.log(`Found ${testFiles.length} test files.`);
+      
       const registeredTests = [];
       
       for (const filePath of testFiles) {
         try {
           // Clear require cache to ensure fresh load
-          delete require.cache[filePath];
+          delete require.cache[require.resolve(filePath)];
           
           // Load test file
+          console.log(`Loading test file: ${filePath}`);
           const testModule = require(filePath);
           
           // Register tests
@@ -429,8 +441,12 @@ class ValidationRegistry {
             if (Array.isArray(testIds)) {
               registeredTests.push(...testIds);
             }
+          } else {
+            console.log(`No tests found in file: ${filePath}`);
           }
         } catch (error) {
+          console.error(`Error loading test file: ${filePath}`);
+          console.error(error);
           errorHandler.logError(error, {
             component: 'ValidationRegistry',
             method: 'scanTestFiles',
@@ -439,6 +455,7 @@ class ValidationRegistry {
         }
       }
       
+      console.log(`Registered ${registeredTests.length} tests.`);
       return registeredTests;
     } catch (error) {
       throw errorHandler.createIOError(`Failed to scan test files: ${error.message}`, error);
@@ -488,7 +505,15 @@ class ValidationRegistry {
   _findJsFiles(directory) {
     let results = [];
     
+    // Ensure we have an absolute path
+    const absoluteDir = path.isAbsolute(directory) ? directory : path.resolve(process.cwd(), directory);
+    
     function traverseDir(dir) {
+      if (!fs.existsSync(dir)) {
+        console.warn(`Warning: Directory does not exist: ${dir}`);
+        return;
+      }
+      
       const files = fs.readdirSync(dir);
       
       for (const file of files) {
@@ -498,12 +523,12 @@ class ValidationRegistry {
         if (stat.isDirectory()) {
           traverseDir(fullPath);
         } else if (file.endsWith('.js') || file.endsWith('.ts')) {
-          results.push(fullPath);
+          results.push(path.resolve(fullPath)); // Use absolute path
         }
       }
     }
     
-    traverseDir(directory);
+    traverseDir(absoluteDir);
     return results;
   }
   

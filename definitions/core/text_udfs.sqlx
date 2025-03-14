@@ -1,0 +1,126 @@
+config {
+  type: "operations",
+  name: "text_udfs",
+  description: "Common text processing UDFs for record matching and comparison",
+  tags: ["core", "udfs", "text_processing"]
+}
+
+-- Create UDFs for standardizing and comparing text values
+-- These functions can be used across the entire project
+
+-- Standardize name
+CREATE OR REPLACE FUNCTION ${self()}.standardize_name(input STRING)
+RETURNS STRING AS (
+  IF(input IS NULL, NULL,
+    REGEXP_REPLACE(
+      REGEXP_REPLACE(
+        UPPER(TRIM(input)),
+        r'^(MR|MRS|MS|DR|PROF)\.?\s+', ''
+      ),
+      r'\s+(JR|SR|I|II|III|IV|V|ESQ|MD|PHD)\.?$', ''
+    )
+  )
+);
+
+-- Standardize address
+CREATE OR REPLACE FUNCTION ${self()}.standardize_address(input STRING)
+RETURNS STRING AS (
+  IF(input IS NULL, NULL,
+    REGEXP_REPLACE(
+      REGEXP_REPLACE(
+        REGEXP_REPLACE(
+          REGEXP_REPLACE(
+            UPPER(TRIM(input)),
+            r'\bAPARTMENT\b|\bAPT\b', 'APT'
+          ),
+          r'\bAVENUE\b|\bAVE\b', 'AVE'
+        ),
+        r'\bBOULEVARD\b|\bBLVD\b', 'BLVD'
+      ),
+      r'\bSTREET\b|\bST\b', 'ST'
+    )
+  )
+);
+
+-- Standardize phone
+CREATE OR REPLACE FUNCTION ${self()}.standardize_phone(input STRING)
+RETURNS STRING AS (
+  IF(input IS NULL, NULL,
+    REGEXP_REPLACE(input, r'[^0-9]', '')
+  )
+);
+
+-- Standardize email
+CREATE OR REPLACE FUNCTION ${self()}.standardize_email(input STRING)
+RETURNS STRING AS (
+  IF(input IS NULL, NULL,
+    LOWER(TRIM(input))
+  )
+);
+
+-- Calculate phonetic similarity between two strings
+CREATE OR REPLACE FUNCTION ${self()}.phonetic_similarity(s1 STRING, s2 STRING, algorithm STRING DEFAULT 'SOUNDEX')
+RETURNS FLOAT64 AS (
+  CASE
+    WHEN s1 IS NULL OR s2 IS NULL THEN 0.0
+    WHEN UPPER(TRIM(s1)) = UPPER(TRIM(s2)) THEN 1.0
+    WHEN algorithm = 'SOUNDEX' AND SOUNDEX(s1) = SOUNDEX(s2) THEN 0.9
+    -- Note: BigQuery doesn't have a native METAPHONE function, so we use SOUNDEX
+    WHEN algorithm = 'METAPHONE' AND SOUNDEX(s1) = SOUNDEX(s2) THEN 0.85
+    ELSE 0.0
+  END
+);
+
+-- Calculate text similarity using Levenshtein distance
+CREATE OR REPLACE FUNCTION ${self()}.text_similarity(s1 STRING, s2 STRING)
+RETURNS FLOAT64 AS (
+  CASE
+    WHEN s1 IS NULL OR s2 IS NULL THEN 0.0
+    WHEN UPPER(TRIM(s1)) = UPPER(TRIM(s2)) THEN 1.0
+    ELSE ML.SIMILARITY(s1, s2, 'LEVENSHTEIN')
+  END
+);
+
+-- Calculate address similarity by handling common variations
+CREATE OR REPLACE FUNCTION ${self()}.address_similarity(addr1 STRING, addr2 STRING)
+RETURNS FLOAT64 AS (
+  CASE
+    WHEN addr1 IS NULL OR addr2 IS NULL THEN 0.0
+    WHEN UPPER(TRIM(addr1)) = UPPER(TRIM(addr2)) THEN 1.0
+    ELSE
+      ML.SIMILARITY(
+        ${self()}.standardize_address(addr1),
+        ${self()}.standardize_address(addr2),
+        'LEVENSHTEIN'
+      )
+  END
+);
+
+-- Extract email domain
+CREATE OR REPLACE FUNCTION ${self()}.email_domain(email STRING)
+RETURNS STRING AS (
+  CASE 
+    WHEN email IS NULL THEN NULL
+    WHEN STRPOS(email, '@') > 0 
+      THEN SUBSTR(LOWER(TRIM(email)), STRPOS(email, '@') + 1)
+    ELSE NULL
+  END
+);
+
+-- Extract the last four digits from any string
+CREATE OR REPLACE FUNCTION ${self()}.last_four_digits(input STRING)
+RETURNS STRING AS (
+  IF(input IS NULL, NULL,
+    SUBSTR(REGEXP_REPLACE(input, r'[^0-9]', ''), -4)
+  )
+);
+
+-- Generate a blocking key from name fields
+CREATE OR REPLACE FUNCTION ${self()}.name_blocking_key(first_name STRING, last_name STRING)
+RETURNS STRING AS (
+  CONCAT(
+    SOUNDEX(first_name),
+    '_',
+    SOUNDEX(last_name)
+  )
+); 

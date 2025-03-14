@@ -7,8 +7,10 @@
  */
 
 const { StrategyError } = require('../core/errors');
-const phonetic = require('phonetic-algorithms');
-const addresser = require('addresser');
+// Use our mock phonetic algorithms that generate SQL
+const phonetic = require('../mocks/phonetic-algorithms');
+// Use our mock addresser that generates SQL
+const addresser = require('../mocks/addresser');
 
 /**
  * Generates an exact value blocking key

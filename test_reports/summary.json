@@ -1,0 +1,61 @@
+{
+  "total": 8,
+  "executed": 8,
+  "passed": 4,
+  "failed": 4,
+  "pending": 0,
+  "duration": 4,
+  "coverage": {
+    "percentage": 100,
+    "covered": 8,
+    "total": 8,
+    "byType": {
+      "unit": {
+        "percentage": 100,
+        "covered": 4,
+        "total": 4
+      },
+      "integration": {
+        "percentage": 0,
+        "covered": 0,
+        "total": 0
+      },
+      "performance": {
+        "percentage": 100,
+        "covered": 4,
+        "total": 4
+      },
+      "e2e": {
+        "percentage": 0,
+        "covered": 0,
+        "total": 0
+      }
+    }
+  },
+  "byType": {
+    "unit": {
+      "total": 4,
+      "executed": 4,
+      "passed": 4,
+      "failed": 0
+    },
+    "integration": {
+      "total": 0,
+      "executed": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "performance": {
+      "total": 4,
+      "executed": 4,
+      "passed": 0,
+      "failed": 4
+    },
+    "e2e": {
+      "total": 0,
+      "executed": 0,
+      "passed": 0,
+      "failed": 0
+    }
+  }
+}

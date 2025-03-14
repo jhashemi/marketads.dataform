@@ -211,8 +211,12 @@ async function loadConfiguration(configFile) {
 async function initializeFramework() {
   console.log('Initializing validation framework...');
   
-  // Initialize validation registry with test directory
-  await validationRegistry.initialize('./tests');
+  // Initialize validation registry with test directories
+  await validationRegistry.initialize([
+    './tests/unit',
+    './tests/integration',
+    './tests/performance'
+  ]);
   
   // Initialize documentation manager
   await documentationManager.initialize('./docs');

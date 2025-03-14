@@ -17,8 +17,8 @@ config {
 
 js {
   // Import the SQL generation utilities
-  const { generateMatchingPipeline } = require("../includes/sql/similarity_functions");
-  const { createSoundexFunction, createMetaphoneFunction } = require("../includes/sql/phonetic_functions");
+  const { generateMatchingPipeline } = require("/includes/sql/similarity_functions");
+  const { createSoundexFunction, createMetaphoneFunction } = require("/includes/sql/phonetic_functions");
   
   // Define the field mappings between source and target tables
   const fieldMappings = [

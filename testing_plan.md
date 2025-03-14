@@ -111,9 +111,14 @@ assert.deepStrictEqual(exampleAction.dependencies, ["source_table"], "Test Case 
     *   An explanation of the testing strategy.
     *  Documentation of the semantic type mapping.
 
-## 8. Implement Semantic Type Mapping
 
-*   Create `includes/semantic_types.js` to store a `semanticTypeMap`. This will be a JavaScript object mapping semantic types to arrays of possible column names.
+## 8. Semantic Type Mapping Implementation
+
+### 8.1. Create `semantic_types.js`
+
+*   Create `includes/semantic_types.js` to store the `semanticTypeMap`.
+*   Define `semanticTypeMap` as a JavaScript object mapping semantic types (e.g., "email", "firstName", "lastName") to arrays of possible column names.
+*   Export `semanticTypeMap` to make it accessible to other modules.
 
     **Example:**
 
@@ -129,4 +134,46 @@ assert.deepStrictEqual(exampleAction.dependencies, ["source_table"], "Test Case 
     module.exports = { semanticTypeMap };
     ```
 
-*   Modify matching functions in `includes/matching_functions.js` (and potentially `includes/rule_engine.js`) to use the `semanticTypeMap`.  Before comparing column values, the functions should look up the semantic type of each column.  If both columns belong to the same semantic type, the comparison can proceed. Otherwise, the comparison should be skipped or handled according to the defined logic.
+### 8.2. Implement Semantic Type Usage in Matching Functions
+
+*   **Modify Matching Functions:** Update functions in `includes/matching_functions.js` (and potentially `includes/rule_engine.js`) to utilize the `semanticTypeMap`.
+*   **Lookup Semantic Type:** Within these functions, before comparing column values, implement a lookup of the semantic type for each column using the `semanticTypeMap`.
+*   **Conditional Comparison:** Modify the comparison logic to proceed only if both columns being compared belong to the same semantic type. If semantic types differ, skip the comparison or handle it according to specific application logic.
+
+## 9. Update Test Files List
+
+The following test files have been created in the `tests/` directory:
+
+### Unit Tests
+*   `tests/unit/blocking_functions_test.js`
+*   `tests/unit/blocking_tests.js`
+*   `tests/unit/config_test.js`
+*   `tests/unit/docs_test.js`
+*   `tests/unit/matching_functions_test.js`
+*   `tests/unit/pipeline_tests.js`
+*   `tests/unit/regex_pattern_tests.js`
+*   `tests/unit/rule_engine_test.js`
+*   `tests/unit/standardization_tests.js`
+
+### Integration Tests
+*   `tests/integration/end_to_end_matching_tests.js`
+*   `tests/integration/incremental_processing_tests.js`
+*   `tests/integration/multi_table_waterfall_tests.js`
+*   `tests/integration/transitive_closure_tests.js`
+*   `tests/integration/waterfall_strategy_tests.js`
+
+### Performance Tests
+*   `tests/performance/optimization_tests.js`
+*   `tests/performance/scalability_tests.js`
+
+## 10. Update Documentation
+
+*   Update the project's `README.md` to include documentation of the semantic type mapping and its usage.
+*  Document the `semanticTypeMap` structure, explain how semantic types are defined and used in matching, and provide examples of how to extend or modify the mapping.
+
+## 11. Review and Finalize
+
+*   Review all implemented tests, documentation, and code changes.
+*   Ensure that the tests are comprehensive, covering all key functionalities and scenarios.
+*   Verify that the documentation is clear, accurate, and up-to-date.
+*   Finalize the testing plan and semantic type mapping implementation.
