@@ -70,12 +70,11 @@ exports.tests = [
         }
       });
       
+      const matchingSystemFactory = new MatchingSystemFactory();
       // Configure matching system
-      const system = new MatchingSystem({
+      const system = matchingSystemFactory.createMatchingSystem({
         sourceTable: sourceTable,
         targetTables: [referenceTable],
-        strategyName: 'waterfall',
-        strategy: strategy,
         outputTable: 'test_matches_output'
       });
       
@@ -161,13 +160,12 @@ exports.tests = [
       for (const sourceTable of sourceTables) {
         // Configure strategy
         const strategy = matchStrategyFactory.createWaterfallStrategy(strategyConfig);
+        const matchingSystemFactory = new MatchingSystemFactory();
         
         // Configure matching system
-        const system = new MatchingSystem({
+        const system = matchingSystemFactory.createMatchingSystem({
           sourceTable: sourceTable,
           targetTables: [referenceTable],
-          strategyName: 'waterfall',
-          strategy: strategy,
           outputTable: `test_matches_${sourceTable}`
         });
         
@@ -276,13 +274,12 @@ exports.tests = [
       for (const scenario of dataQualityScenarios) {
         // Configure strategy
         const strategy = matchStrategyFactory.createWaterfallStrategy(strategyConfig);
+        const matchingSystemFactory = new MatchingSystemFactory();
         
         // Configure matching system
-        const system = new MatchingSystem({
+        const system = matchingSystemFactory.createMatchingSystem({
           sourceTable: scenario.sourceTable,
           targetTables: [referenceTable],
-          strategyName: 'waterfall',
-          strategy: strategy,
           outputTable: `test_matches_${scenario.name}`
         });
         

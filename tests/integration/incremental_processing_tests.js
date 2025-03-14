@@ -32,9 +32,10 @@ exports.tests = [
     testFn: withErrorHandling(async function(context) {
       // Setup test parameters
       const { baseTable, incrementalTable, referenceTable, expectedMatchRates } = context.parameters;
+      const historicalMatcherFactory = new HistoricalMatcherFactory();
       
       // Create historical matcher
-      const matcher = new HistoricalMatcher({
+      const matcher = historicalMatcherFactory.createHistoricalMatcher({
         sourceTable: baseTable,
         targetTables: [referenceTable],
         outputTable: 'test_match_results',
@@ -109,9 +110,10 @@ exports.tests = [
     testFn: async (context) => {
       // Setup test parameters
       const { baseTable, updatesTable, newRecordsTable, referenceTable, expectedResults } = context.parameters;
+      const historicalMatcherFactory = new HistoricalMatcherFactory();
       
       // Create historical matcher
-      const matcher = new HistoricalMatcher({
+      const matcher = historicalMatcherFactory.createHistoricalMatcher({
         sourceTable: baseTable,
         targetTables: [referenceTable],
         outputTable: 'test_match_results',
@@ -187,20 +189,21 @@ exports.tests = [
       
       // Step 1: Process base data and measure time
       console.log(`Processing large base data from ${baseTable}...`);
+      const matchingSystemFactory = new MatchingSystemFactory();
       
-      const fullProcessingMatcher = new MatchingSystem({
+      const fullProcessingMatcher = matchingSystemFactory.createMatchingSystem({
         sourceTable: baseTable,
         targetTables: [referenceTable],
         outputTable: 'test_full_results',
-        incrementalMode: false
       });
       
       const fullProcessingStartTime = Date.now();
       const fullProcessingResults = await fullProcessingMatcher.executeMatching();
       const fullProcessingTime = Date.now() - fullProcessingStartTime;
       
+      const historicalMatcherFactory = new HistoricalMatcherFactory();
       // Step 2: Process base data with incremental matcher
-      const incrementalMatcher = new HistoricalMatcher({
+      const incrementalMatcher = historicalMatcherFactory.createHistoricalMatcher({
         sourceTable: baseTable,
         targetTables: [referenceTable],
         outputTable: 'test_incremental_results',

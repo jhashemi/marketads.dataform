@@ -215,10 +215,12 @@ function createMatchingSystem(config = {}) {
     config: matchingConfig
   };
 }
+const { TransitiveMatcherFactory } = require('./transitive_matcher_factory');
 
 module.exports = {
   createMatchingSystem,
   MatchEngine,
   MatchScorer,
-  MatchValidator
+  MatchValidator,
+  TransitiveMatcherFactory
 };

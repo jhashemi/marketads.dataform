@@ -111,10 +111,17 @@ function createMultiTableWaterfallTestFn(validator) {
  */
 function createMatchingSystemTestFn(executor) {
   return withErrorHandling(async function(context) {
+    const { parameters } = context;
+    if (!parameters.sourceTable) {
+      throw new Error('Source table is required for MatchingSystem tests.');
+    }
+    if (!parameters.referenceTable) {
+      throw new Error('Reference table is required for MatchingSystem tests.');
+    }
     // Create matching system for executor to use
     const matchingSystem = matchingSystemFactory.createMatchingSystem({
-      sourceTable: context.parameters.sourceTable,
-      targetTables: [context.parameters.referenceTable],
+      sourceTable: parameters.sourceTable,
+      targetTables: [parameters.referenceTable],
       outputTable: 'test_output'
     });
     
@@ -130,10 +137,17 @@ function createMatchingSystemTestFn(executor) {
  */
 function createHistoricalMatcherTestFn(executor) {
   return withErrorHandling(async function(context) {
+    const { parameters } = context;
+    if (!parameters.sourceTable && !parameters.baseTable) {
+      throw new Error('Source table or base table is required for HistoricalMatcher tests.');
+    }
+    if (!parameters.referenceTable) {
+      throw new Error('Reference table is required for HistoricalMatcher tests.');
+    }
     // Create historical matcher for executor to use
     const historicalMatcher = historicalMatcherFactory.createHistoricalMatcher({
-      sourceTable: context.parameters.sourceTable || context.parameters.baseTable,
-      targetTables: [context.parameters.referenceTable],
+      sourceTable: parameters.sourceTable || parameters.baseTable,
+      targetTables: [parameters.referenceTable],
       outputTable: 'test_output',
       incrementalMode: true,
       timestampColumn: 'last_updated'
@@ -144,6 +158,31 @@ function createHistoricalMatcherTestFn(executor) {
   });
 }
 
+/**
+ * Creates a standard test function for transitive matcher tests
+ * @param {Function} executor - Function that performs transitive matcher operations
+ * @returns {Function} Test function
+ */
+function createTransitiveMatcherTestFn(executor) {
+  return withErrorHandling(async function(context) {
+    const { parameters } = context;
+    if (!parameters.matchResultsTable) {
+      throw new Error('Match results table is required for TransitiveMatcher tests.');
+    }
+    if (!parameters.confidenceThreshold) {
+      throw new Error('Confidence threshold is required for TransitiveMatcher tests.');
+    }
+    // Create transitive matcher for executor to use
+    const transitiveMatcher = new TransitiveMatcher({ // Directly use constructor since factory might not be needed for tests
+      matchResultsTable: parameters.matchResultsTable,
+      confidenceThreshold: parameters.confidenceThreshold,
+    });
+
+    // Execute test with transitive matcher
+    return await executor(transitiveMatcher, context);
+  });
+}
+
 // Export test helpers
 module.exports = {
   createWaterfallTestConfig,
@@ -151,5 +190,6 @@ module.exports = {
   createMultiTableWaterfallTestFn,
   createMatchingSystemTestFn,
   createHistoricalMatcherTestFn,
+  createTransitiveMatcherTestFn,
   matchStrategyFactory
-}; 
+};

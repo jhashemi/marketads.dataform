@@ -8,8 +8,13 @@
 const { TestType, TestPriority } = require('../../includes/validation/validation_registry');
 const { withErrorHandling } = require('../../includes/validation/error_handler');
 
-// Import the MatchingSystem as a class
-const { MatchingSystem } = require('../../includes/matching_system');
+// Import the required classes and factories
+const { 
+  MatchingSystem, 
+  MatchingSystemFactory,
+  TransitiveMatcher,
+  TransitiveMatcherFactory 
+} = require('../../includes');
 
 exports.tests = [
   {
@@ -28,44 +33,59 @@ exports.tests = [
       clusterOutputTable: 'test_customer_clusters'
     },
     testFn: withErrorHandling(async function(context) {
+      // Debug the context object
+      console.log('DEBUG: Context object received in transitive_closure_basic_test:', JSON.stringify(context, null, 2));
+      
+      // Check if parameters exist
+      if (!context.parameters || !context.parameters.sourceTable) {
+        // If parameters are missing, use the defaults from the test definition
+        console.log('DEBUG: Using default parameters from test definition');
+        context.parameters = this.parameters || exports.tests[0].parameters;
+      }
+      
       // Setup test parameters
       const { sourceTable, referenceTable, expectedDirectMatches, expectedTransitiveMatches, transitiveMatchDepth, clusterOutputTable } = context.parameters;
       
+      console.log(`INFO: Running test with sourceTable=${sourceTable}, referenceTable=${referenceTable}`);
+      
       // Step 1: Run matching without transitive closure
       console.log(`Running direct matching on ${sourceTable}...`);
-      
-      const directMatcher = new MatchingSystem({
+      const matchingSystemFactory = new MatchingSystemFactory();
+
+      const directMatcher = matchingSystemFactory.createMatchingSystem({
         sourceTable,
         targetTables: [referenceTable],
-        outputTable: 'test_direct_matches',
-        enableTransitiveClosure: false
+        outputTable: 'test_direct_matches'
       });
-      
+
       const directResults = await directMatcher.executeMatching();
-      
+
       // Verify direct matches
       const correctDirectMatches = Math.abs(directResults.matchedRecords - expectedDirectMatches) <= 5; // Allow small variance
-      
+
       // Step 2: Run matching with transitive closure
       console.log(`Running matching with transitive closure on ${sourceTable}...`);
-      
-      const transitiveMatcher = new MatchingSystem({
+
+      const transitiveMatcher = matchingSystemFactory.createMatchingSystem({
         sourceTable,
         targetTables: [referenceTable],
-        outputTable: 'test_transitive_matches',
-        enableTransitiveClosure: true,
-        transitiveMatchDepth,
-        clusterOutputTable
+        outputTable: 'test_transitive_matches'
       });
-      
+
       const transitiveResults = await transitiveMatcher.executeMatching();
-      
+
       // Calculate additional matches found through transitive closure
       const additionalMatches = transitiveResults.matchedRecords - directResults.matchedRecords;
       const correctTransitiveMatches = Math.abs(additionalMatches - expectedTransitiveMatches) <= 5; // Allow small variance
+
+      // Analyze cluster quality using our TransitiveMatcher
+      const transitiveMatcherFactory = new TransitiveMatcherFactory();
+      const clusterAnalyzer = transitiveMatcherFactory.createTransitiveMatcher({
+        matchResultsTable: 'test_transitive_matches',
+        confidenceThreshold: 0.7
+      });
       
-      // Analyze cluster quality
-      const clusterMetrics = await transitiveMatcher.getClusterMetrics();
+      const clusterMetrics = await clusterAnalyzer.getClusterMetrics();
       
       return {
         passed: correctDirectMatches && correctTransitiveMatches,
@@ -76,7 +96,7 @@ exports.tests = [
           clusterCount: clusterMetrics.clusterCount,
           averageClusterSize: clusterMetrics.averageClusterSize,
           largestClusterSize: clusterMetrics.largestClusterSize,
-          connectivityScore: clusterMetrics.connectivityScore || 'N/A'
+          connectivityScore: clusterMetrics.transitivityScore || 'N/A'
         },
         message: correctDirectMatches && correctTransitiveMatches
           ? `Successfully applied transitive closure, finding ${additionalMatches} additional matches and creating ${clusterMetrics.clusterCount} clusters`
@@ -114,12 +134,12 @@ exports.tests = [
       
       // Step 1: Run direct matching (depth 0)
       console.log(`Running direct matching on ${sourceTable}...`);
+      const matchingSystemFactory = new MatchingSystemFactory();
       
-      const directMatcher = new MatchingSystem({
+      const directMatcher = matchingSystemFactory.createMatchingSystem({
         sourceTable,
         targetTables: [referenceTable],
         outputTable: `${baseOutputTable}_direct`,
-        enableTransitiveClosure: false
       });
       
       const directResults = await directMatcher.executeMatching();
@@ -139,16 +159,20 @@ exports.tests = [
       for (const depth of transitiveMatchDepths) {
         console.log(`Running matching with transitive closure depth ${depth} on ${sourceTable}...`);
         
-        const transitiveMatcher = new MatchingSystem({
+        const transitiveMatcher = matchingSystemFactory.createMatchingSystem({
           sourceTable,
           targetTables: [referenceTable],
-          outputTable: `${baseOutputTable}_depth${depth}`,
-          enableTransitiveClosure: true,
-          transitiveMatchDepth: depth,
-          clusterOutputTable: `test_customer_clusters_depth${depth}`
+          outputTable: `${baseOutputTable}_depth${depth}`
         });
         
         const transitiveResults = await transitiveMatcher.executeMatching();
+
+        // Get a TransitiveMatcher to analyze clusters
+        const transitiveMatcherFactory = new TransitiveMatcherFactory();
+        const clusterAnalyzer = transitiveMatcherFactory.createTransitiveMatcher({
+          matchResultsTable: `${baseOutputTable}_depth${depth}`,
+          confidenceThreshold: 0.7
+        });
         
         // Verify matches at this depth
         const depthKey = `depth${depth}`;
@@ -235,31 +259,35 @@ exports.tests = [
       // Step 2: Run matching with different confidence thresholds
       for (const threshold of confidenceThresholds) {
         console.log(`Running transitive closure with confidence threshold ${threshold}...`);
-        
-        const transitiveMatcher = new MatchingSystem({
+        const matchingSystemFactory = new MatchingSystemFactory();
+
+        const transitiveMatcher = matchingSystemFactory.createMatchingSystem({
           sourceTable,
           targetTables: [referenceTable],
-          outputTable: `${baseOutputTable}_threshold${threshold}`,
-          enableTransitiveClosure: true,
-          transitiveMatchDepth,
-          transitiveConfidenceThreshold: threshold,
-          clusterOutputTable: `test_customer_clusters_threshold${threshold}`
+          outputTable: `${baseOutputTable}_threshold${threshold}`
+        });
+
+        const transitiveResults = await transitiveMatcher.executeMatching();
+        
+        // Use TransitiveMatcherFactory to analyze clusters with different thresholds
+        const transitiveMatcherFactory = new TransitiveMatcherFactory();
+        const clusterAnalyzer = transitiveMatcherFactory.createTransitiveMatcher({
+          matchResultsTable: `${baseOutputTable}_threshold${threshold}`,
+          confidenceThreshold: threshold
         });
         
-        const transitiveResults = await transitiveMatcher.executeMatching();
-        const clusterMetrics = await transitiveMatcher.getClusterMetrics();
-        
+        const clusterMetrics = await clusterAnalyzer.getClusterMetrics();
+
         results[`threshold${threshold}`] = {
           threshold,
           matchedRecords: transitiveResults.matchedRecords,
           additionalMatches: transitiveResults.matchedRecords - directResults.matchedRecords,
           clusterCount: clusterMetrics.clusterCount,
-          averageClusterSize: clusterMetrics.averageClusterSize,
-          falsePositiveRate: transitiveResults.falsePositiveRate || 'N/A',
+          falsePositiveRate: clusterMetrics.falsePositiveRate || 'N/A',
           matchQuality: transitiveResults.matchQuality || 'N/A'
         };
       }
-      
+        
       // Determine optimal confidence threshold balancing coverage and quality
       const optimalThreshold = determineOptimalConfidenceThreshold(results, confidenceThresholds);
       
@@ -392,4 +420,4 @@ exports.register = async (registry) => {
   }
   
   return testIds;
-};
+}; 

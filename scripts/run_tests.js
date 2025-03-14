@@ -226,21 +226,42 @@ function initializeFramework() {
  */
 function ensureClassBasedFactoryPattern() {
   try {
-    // Import factory classes and core classes
-    const { MatchStrategyFactory } = require('../includes/match_strategy_factory');
-    const { MatchingSystemFactory } = require('../includes/matching_system_factory');
-    const { HistoricalMatcherFactory } = require('../includes/historical_matcher_factory');
-    const { MatchingSystem } = require('../includes/matching_system');
-    const { HistoricalMatcher } = require('../includes/historical_matcher');
+    // Import all core components from the main index
+    const {
+      // Core Classes
+      MatchingSystem,
+      HistoricalMatcher,
+      TransitiveMatcher,
+      
+      // Factory Classes
+      MatchingSystemFactory,
+      HistoricalMatcherFactory,
+      MatchStrategyFactory,
+      TransitiveMatcherFactory,
+      
+      // Factory instances
+      matchingSystemFactory,
+      historicalMatcherFactory,
+      matchStrategyFactory,
+      transitiveMatcherFactory
+    } = require('../includes');
     
-    // Create global factory instances
-    global.matchStrategyFactory = new MatchStrategyFactory();
-    global.matchingSystemFactory = new MatchingSystemFactory();
-    global.historicalMatcherFactory = new HistoricalMatcherFactory();
+    // Create global factory instances if they haven't been imported
+    global.matchStrategyFactory = matchStrategyFactory || new MatchStrategyFactory();
+    global.matchingSystemFactory = matchingSystemFactory || new MatchingSystemFactory();
+    global.historicalMatcherFactory = historicalMatcherFactory || new HistoricalMatcherFactory();
+    global.transitiveMatcherFactory = transitiveMatcherFactory || new TransitiveMatcherFactory();
     
     // Make classes globally available for tests
     global.MatchingSystem = MatchingSystem;
     global.HistoricalMatcher = HistoricalMatcher;
+    global.TransitiveMatcher = TransitiveMatcher;
+    
+    // Make factory classes available globally
+    global.MatchingSystemFactory = MatchingSystemFactory;
+    global.HistoricalMatcherFactory = HistoricalMatcherFactory;
+    global.MatchStrategyFactory = MatchStrategyFactory;
+    global.TransitiveMatcherFactory = TransitiveMatcherFactory;
     
     console.log('Class-based factory pattern initialized successfully.');
   } catch (error) {

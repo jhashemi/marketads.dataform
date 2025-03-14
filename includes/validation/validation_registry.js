@@ -376,10 +376,19 @@ class ValidationRegistry {
         return result;
       }
       
-      // Ensure context has parameters
-      if (!context.parameters && test.parameters) {
-        context.parameters = test.parameters;
+      // Create or merge parameters
+      if (!context) context = {};
+      if (!context.parameters) {
+        context.parameters = test.parameters || {};
+      } else {
+        // Merge parameters, giving priority to context params but filling in missing values from test params
+        context.parameters = { ...test.parameters, ...context.parameters };
       }
+      
+      // Debugging for parameter handling
+      console.log(`DEBUG LEGACY TEST: Context object received:`, JSON.stringify(context, null, 2));
+      console.log(`DEBUG LEGACY TEST: Are parameters defined?`, Boolean(context.parameters));
+      console.log(`DEBUG LEGACY TEST: Parameters content:`, JSON.stringify(context.parameters, null, 2));
       
       // Run test
       result.data = await test.testFn(context);

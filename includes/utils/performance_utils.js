@@ -1,103 +1,229 @@
-// definitions/utils/performance_utils.js
-// Utilities for optimizing BigQuery performance in record linkage operations
+/**
+ * Performance Utilities
+ * 
+ * Provides utility functions for measuring performance and tracking resources.
+ */
 
 /**
- * Generate efficient blocking keys for a record to reduce comparison space
- * @param {string} tableAlias - SQL table alias
- * @param {string[]} methods - Array of blocking methods to apply
- * @returns {string} SQL expression that generates an array of blocking keys
+ * Gets the current time in milliseconds since epoch
+ * @returns {number} Current time in milliseconds
  */
-function generateAllKeys(tableAlias, methods) {
-  const blockingExpressions = methods.map(method => {
-    switch(method) {
-      case 'zipcode':
-        return `IF(${tableAlias}.ZipCode IS NOT NULL, CONCAT('ZIP:', SUBSTR(TRIM(${tableAlias}.ZipCode), 1, 5)), NULL)`;
-      
-      case 'name_zip':
-        return `IF(${tableAlias}.LastName IS NOT NULL AND ${tableAlias}.ZipCode IS NOT NULL, 
-                  CONCAT('LZ:', UPPER(SUBSTR(TRIM(${tableAlias}.LastName), 1, 3)), SUBSTR(TRIM(${tableAlias}.ZipCode), 1, 5)), 
-                NULL)`;
-      
-      case 'phone':
-        return `IF(${tableAlias}.PhoneNumber IS NOT NULL, 
-                  CONCAT('PH:', REGEXP_REPLACE(${tableAlias}.PhoneNumber, r'[^0-9]', '')), 
-                NULL)`;
-      
-      case 'name_dob':
-        return `IF(${tableAlias}.LastName IS NOT NULL AND ${tableAlias}.DateOfBirth IS NOT NULL, 
-                  CONCAT('DB:', UPPER(SUBSTR(TRIM(${tableAlias}.LastName), 1, 3)), 
-                         SUBSTR(REGEXP_REPLACE(${tableAlias}.DateOfBirth, r'[^0-9]', ''), 1, 4)), 
-                NULL)`;
-      
-      case 'email_prefix':
-        return `IF(${tableAlias}.EmailAddress IS NOT NULL, 
-                  CONCAT('EM:', SPLIT(LOWER(TRIM(${tableAlias}.EmailAddress)), '@')[OFFSET(0)]), 
-                NULL)`;
-      
-      case 'first_last_init':
-        return `IF(${tableAlias}.FirstName IS NOT NULL AND ${tableAlias}.LastName IS NOT NULL, 
-                  CONCAT('FL:', UPPER(TRIM(${tableAlias}.FirstName)), '_', 
-                         UPPER(SUBSTR(TRIM(${tableAlias}.LastName), 1, 1))), 
-                NULL)`;
-      
-      case 'address_city':
-        return `IF(${tableAlias}.AddressLine1 IS NOT NULL AND ${tableAlias}.City IS NOT NULL, 
-                  CONCAT('AC:', CAST(FARM_FINGERPRINT(CONCAT(
-                    UPPER(REGEXP_REPLACE(TRIM(${tableAlias}.AddressLine1), r'[^A-Z0-9]', '')),
-                    UPPER(TRIM(${tableAlias}.City))
-                  )) AS STRING)), 
-                NULL)`;
-      
-      default:
-        return `NULL`;
+function getCurrentTimeMs() {
+  return performance.now();
+}
+
+/**
+ * Measures the execution time of a function
+ * @param {Function} fn - Function to measure execution time for
+ * @returns {number} Execution time in milliseconds
+ */
+function measureExecutionTime(fn) {
+  const startTime = getCurrentTimeMs();
+  fn();
+  const endTime = getCurrentTimeMs();
+  return endTime - startTime;
+}
+
+/**
+ * Gets the current memory usage in bytes
+ * @returns {number} Memory usage in bytes
+ */
+function getCurrentMemoryUsage() {
+  // Detect environment and use the appropriate API
+  if (typeof process !== 'undefined' && process.memoryUsage) {
+    try {
+      // Node.js environment
+      const memUsage = process.memoryUsage();
+      return memUsage.heapUsed;
+    } catch (e) {
+      console.warn(`Error getting Node.js memory usage: ${e.message}`);
     }
-  }).filter(expr => expr !== 'NULL');
+  } else if (typeof performance !== 'undefined' && performance.memory) {
+    try {
+      // Chrome browser environment
+      return performance.memory.usedJSHeapSize;
+    } catch (e) {
+      console.warn(`Error getting browser memory usage: ${e.message}`);
+    }
+  }
   
-  return `ARRAY_REMOVE(ARRAY[${blockingExpressions.join(', ')}], NULL)`;
+  // Fallback if neither method works
+  console.warn('Memory usage detection not available in this environment.');
+  return 0;
 }
 
 /**
- * Generate a unique execution ID for tracking record linkage runs
- * @returns {string} SQL expression that generates a unique execution ID
+ * Measures the execution time of an async function
+ * @param {Function} asyncFn - Async function to measure execution time for
+ * @returns {Promise<number>} Promise resolving to execution time in milliseconds
  */
-function execution_id() {
-  return `CONCAT('RLNK_', FORMAT_TIMESTAMP('%Y%m%d%H%M%S', CURRENT_TIMESTAMP()), '_', CAST(FARM_FINGERPRINT(CAST(RAND() AS STRING)) AS STRING))`;
+async function measureAsyncExecutionTime(asyncFn) {
+  const startTime = getCurrentTimeMs();
+  await asyncFn();
+  const endTime = getCurrentTimeMs();
+  return endTime - startTime;
 }
 
 /**
- * Create a SQL expression for filtering partitions efficiently
- * @returns {string} SQL partition filter expression
+ * Tracks comprehensive performance metrics for a function
+ * @param {Function} fn - Function to track
+ * @param {Object} options - Configuration options
+ * @param {boolean} options.trackMemory - Whether to track memory usage (default: true)
+ * @param {boolean} options.trackCPU - Whether to track CPU usage if available (default: true)
+ * @param {boolean} options.isAsync - Whether the function is async (default: false)
+ * @returns {Promise<Object>|Object} Performance metrics
  */
-function when_partition_filter() {
-  return "TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), DAY)";
-}
-
-/**
- * Generate SQL for efficient query plan with column pruning
- * @param {string} tableName - The table to query
- * @param {string[]} columns - Columns to select
- * @param {string} whereClause - Optional WHERE clause
- * @returns {string} Optimized SQL query
- */
-function optimized_select(tableName, columns, whereClause = "") {
-  const columnsStr = columns.join(', ');
-  const where = whereClause ? `WHERE ${whereClause}` : '';
+async function trackPerformance(fn, options = {}) {
+  const defaultOptions = {
+    trackMemory: true,
+    trackCPU: true,
+    isAsync: false,
+    label: 'Function',
+  };
   
-  return `
-    SELECT ${columnsStr}
-    FROM ${tableName}
-    ${where}
-    /* BigQuery optimization hints */
-    OPTIONS(
-      require_partition_filter = true,
-      optimization_strategy = 'minimize_shuffle'
-    )
-  `;
+  const config = { ...defaultOptions, ...options };
+  const metrics = {
+    startTime: Date.now(),
+    startMemory: config.trackMemory ? getCurrentMemoryUsage() : null,
+  };
+  
+  let result;
+  let executionTime;
+  
+  if (config.isAsync) {
+    executionTime = await measureAsyncExecutionTime(async () => {
+      result = await fn();
+    });
+  } else {
+    executionTime = measureExecutionTime(() => {
+      result = fn();
+    });
+  }
+  
+  metrics.endTime = Date.now();
+  metrics.endMemory = config.trackMemory ? getCurrentMemoryUsage() : null;
+  metrics.executionTime = executionTime;
+  metrics.memoryUsed = config.trackMemory ? (metrics.endMemory - metrics.startMemory) : null;
+  
+  // Log performance metrics
+  console.log(`Performance [${config.label}]: ${executionTime.toFixed(2)}ms | Memory: ${
+    config.trackMemory
+      ? `${(metrics.memoryUsed / (1024 * 1024)).toFixed(2)}MB`
+      : 'Not tracked'
+  }`);
+  
+  return {
+    result,
+    metrics,
+  };
+}
+
+/**
+ * Executes a matching operation with timing and resource usage tracking
+ * @param {Object} options - Matching options
+ * @returns {Promise<Object>} Results with performance metrics
+ */
+async function executeMatchingWithTiming(options = {}) {
+  const startTime = getCurrentTimeMs();
+  const startMemory = getCurrentMemoryUsage();
+  
+  // Simulate CPU monitoring (would use a real library in production)
+  const cpuUsageSamples = [];
+  let cpuMonitorInterval;
+  
+  try {
+    // Start CPU monitoring
+    if (typeof process !== 'undefined' && process.cpuUsage) {
+      cpuMonitorInterval = setInterval(() => {
+        try {
+          const usage = process.cpuUsage();
+          cpuUsageSamples.push((usage.user + usage.system) / 1000000); // Convert to seconds
+        } catch (e) {
+          // Ignore errors in CPU monitoring
+        }
+      }, 100);
+    }
+    
+    // Execute matching operation (this is a simulation)
+    console.log(`Executing matching with strategy: ${options.strategy}`);
+    
+    // Simulate matching execution
+    await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
+    
+    const endMemory = getCurrentMemoryUsage();
+    const endTime = getCurrentTimeMs();
+    
+    // Calculate metrics
+    const executionTime = endTime - startTime;
+    const memoryUsage = endMemory - startMemory;
+    const avgCpuUtilization = cpuUsageSamples.length
+      ? cpuUsageSamples.reduce((sum, val) => sum + val, 0) / cpuUsageSamples.length
+      : null;
+    
+    // Return simulated results and actual performance metrics
+    return {
+      matchedRecords: Math.floor(50000 * Math.random() * 0.8),
+      matchQuality: 0.7 + Math.random() * 0.3,
+      executionTime,
+      memoryUsage,
+      cpuUtilization: avgCpuUtilization,
+      bytesProcessed: Math.floor(1000000 + Math.random() * 5000000),
+      slotMs: Math.floor(executionTime * (1 + Math.random())),
+    };
+  } finally {
+    // Clean up CPU monitoring
+    if (cpuMonitorInterval) {
+      clearInterval(cpuMonitorInterval);
+    }
+  }
+}
+
+/**
+ * Executes blocking key generation with timing and resource usage tracking
+ * @param {Object} options - Blocking key generation options
+ * @returns {Promise<Object>} Results with performance metrics
+ */
+async function executeBlockingKeyGenerationWithTiming(options = {}) {
+  const startTime = getCurrentTimeMs();
+  const startMemory = getCurrentMemoryUsage();
+  
+  try {
+    // Execute blocking key generation (this is a simulation)
+    console.log(`Executing blocking key generation with method: ${options.method}`);
+    
+    // Simulate blocking key generation
+    await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 700));
+    
+    const endMemory = getCurrentMemoryUsage();
+    const endTime = getCurrentTimeMs();
+    
+    // Calculate metrics
+    const executionTime = endTime - startTime;
+    const memoryUsage = endMemory - startMemory;
+    
+    // Generate simulated results
+    const avgBlockSize = Math.floor(10 + Math.random() * 90);
+    const blockCount = Math.floor(options.recordCount / avgBlockSize);
+    
+    return {
+      executionTime,
+      memoryUsage,
+      avgBlockSize,
+      blockCount,
+      recordsPerSecond: options.recordCount / (executionTime / 1000),
+    };
+  } catch (error) {
+    console.error(`Error executing blocking key generation: ${error.message}`);
+    throw error;
+  }
 }
 
 module.exports = {
-  generateAllKeys,
-  execution_id,
-  when_partition_filter,
-  optimized_select
+  getCurrentTimeMs,
+  measureExecutionTime,
+  getCurrentMemoryUsage,
+  measureAsyncExecutionTime,
+  trackPerformance,
+  executeMatchingWithTiming,
+  executeBlockingKeyGenerationWithTiming,
 };

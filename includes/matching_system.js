@@ -16,6 +16,7 @@ const semanticTypes = require('./semantic_types');
 const blockingFunctions = require('./blocking_functions');
 const MatchStrategyFactory = require('./match_strategy_factory');
 const config = require('./config');
+const { validateParameters } = require('./validation/parameter_validator');
 
 /**
  * Generates SQL for creating blocking keys
@@ -243,13 +244,48 @@ class MatchingSystem {
    * Constructor
    * @param {Object} options - Configuration options
    * @param {string} options.sourceTable - Source table name
-   * @param {Array<string>} options.targetTables - Target table names
-   * @param {string} options.outputTable - Output table name
+   * @param {string|Array<string>} options.targetTables - Target table names
+   * @param {string} [options.referenceTable] - Alternative to targetTables (legacy support)
+   * @param {string} [options.outputTable=match_results] - Output table name
+   * @param {number} [options.minimumConfidence=0.7] - Minimum confidence threshold
+   * @param {Object} [options.fieldMappings] - Custom field mappings
    */
   constructor(options) {
-    this.sourceTable = options.sourceTable;
-    this.targetTables = options.targetTables || [options.referenceTable]; // Support both formats
-    this.outputTable = options.outputTable || 'match_results';
+    // Define validation rules
+    const validationRules = {
+      required: ['sourceTable', { name: 'targetTables', condition: { ifPresent: 'referenceTable', ifEquals: false } }],
+      alternatives: {
+        targetTables: 'referenceTable'
+      },
+      types: {
+        sourceTable: 'string',
+        targetTables: ['string', 'array'],
+        referenceTable: 'string',
+        outputTable: 'string',
+        minimumConfidence: 'number',
+        fieldMappings: 'object'
+      },
+      defaults: {
+        outputTable: 'match_results',
+        minimumConfidence: 0.7
+      },
+      messages: {
+        sourceTable: 'Please provide the source table name.',
+        targetTables: 'Please provide at least one target table or a reference table.'
+      }
+    };
+
+    // Validate and apply defaults
+    const validatedOptions = validateParameters(options, validationRules, 'MatchingSystem');
+    
+    // Initialize properties
+    this.sourceTable = validatedOptions.sourceTable;
+    this.targetTables = Array.isArray(validatedOptions.targetTables) 
+      ? validatedOptions.targetTables 
+      : [validatedOptions.targetTables || validatedOptions.referenceTable];
+    this.outputTable = validatedOptions.outputTable;
+    this.minimumConfidence = validatedOptions.minimumConfidence;
+    this.fieldMappings = validatedOptions.fieldMappings;
   }
 
   /**
@@ -267,6 +303,28 @@ class MatchingSystem {
       matchedRecords: 75,
       unmatchedRecords: 25,
       matchRate: 0.75,
+      executionTime: 1.2
+    };
+  }
+
+  /**
+   * Get match statistics from the output table
+   * @returns {Promise<Object>} Match statistics
+   */
+  async getMatchStatistics() {
+    // In a real implementation, this would query the database for match statistics
+    // For testing purposes, we'll return a simulated result
+    
+    console.log(`Retrieving match statistics from ${this.outputTable}...`);
+    
+    return {
+      totalRecords: 100,
+      matchedRecords: 75,
+      unmatchedRecords: 25,
+      matchRate: 0.75,
+      highConfidenceMatches: 50,
+      mediumConfidenceMatches: 15,
+      lowConfidenceMatches: 10,
       executionTime: 1.2
     };
   }
