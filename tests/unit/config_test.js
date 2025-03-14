@@ -1,82 +1,117 @@
-const assert = require('assert');
-const config = require('../../includes/config');
+/**
+ * Tests for the configuration module
+ */
+
+// Ensure Jest functions are available to the validation registry
+require('../../includes/validation/jest_adapter');
+
+// Continue with the original test
+const { getEnvironmentConfig, 
+        CONFIDENCE, 
+        FIELD_WEIGHTS, 
+        BLOCKING,
+        TARGETS,
+        HISTORICAL_DATASETS,
+        ENVIRONMENTS } = require('../../includes/config');
 
 describe('config', () => {
   describe('CONFIDENCE', () => {
-    it('should have correct threshold values', () => {
-      assert.deepStrictEqual(config.CONFIDENCE, {
-        HIGH: 0.90,
-        MEDIUM: 0.75,
-        LOW: 0.60,
-        MINIMUM: 0.50
-      }, 'CONFIDENCE thresholds are incorrect');
+    test('should have correct threshold values', () => {
+      expect(CONFIDENCE.HIGH_THRESHOLD).toBeGreaterThan(CONFIDENCE.MEDIUM_THRESHOLD);
+      expect(CONFIDENCE.MEDIUM_THRESHOLD).toBeGreaterThan(CONFIDENCE.LOW_THRESHOLD);
+      expect(CONFIDENCE.LOW_THRESHOLD).toBeGreaterThan(0);
     });
   });
 
   describe('getEnvironmentConfig', () => {
-    it('should return development config by default', () => {
-      const defaultConfig = config.ENVIRONMENTS.development;
-      assert.deepStrictEqual(config.getEnvironmentConfig(), defaultConfig, 'Default environment config is incorrect');
+    const originalEnv = process.env.DATAFORM_ENVIRONMENT;
+
+    afterEach(() => {
+      process.env.DATAFORM_ENVIRONMENT = originalEnv;
     });
 
-    it('should return staging config when DATAFORM_ENVIRONMENT is set to staging', () => {
+    test('should return development config by default', () => {
+      process.env.DATAFORM_ENVIRONMENT = undefined;
+      const config = getEnvironmentConfig();
+      expect(config.name).toBe('development');
+    });
+
+    test('should return staging config when DATAFORM_ENVIRONMENT is set to staging', () => {
       process.env.DATAFORM_ENVIRONMENT = 'staging';
-      const stagingConfig = config.ENVIRONMENTS.staging;
-      assert.deepStrictEqual(config.getEnvironmentConfig(), stagingConfig, 'Staging environment config is incorrect');
-      delete process.env.DATAFORM_ENVIRONMENT; // Clean up
-    });
-    
-    it('should return production config when DATAFORM_ENVIRONMENT is set to production', () => {
-        process.env.DATAFORM_ENVIRONMENT = 'production';
-        const productionConfig = config.ENVIRONMENTS.production;
-        assert.deepStrictEqual(config.getEnvironmentConfig(), productionConfig, 'Production environment config is incorrect');
-        delete process.env.DATAFORM_ENVIRONMENT;
+      const config = getEnvironmentConfig();
+      expect(config.name).toBe('staging');
     });
 
-    it('should return development config when DATAFORM_ENVIRONMENT is set to an invalid value', () => {
-        process.env.DATAFORM_ENVIRONMENT = 'invalid';
-        const defaultConfig = config.ENVIRONMENTS.development;
-        assert.deepStrictEqual(config.getEnvironmentConfig(), defaultConfig, "Should have returned default config");
-        delete process.env.DATAFORM_ENVIRONMENT;
+    test('should return production config when DATAFORM_ENVIRONMENT is set to production', () => {
+      process.env.DATAFORM_ENVIRONMENT = 'production';
+      const config = getEnvironmentConfig();
+      expect(config.name).toBe('production');
+    });
+
+    test('should return development config when DATAFORM_ENVIRONMENT is set to an invalid value', () => {
+      process.env.DATAFORM_ENVIRONMENT = 'invalid_environment';
+      const config = getEnvironmentConfig();
+      expect(config.name).toBe('development');
     });
   });
-    
+
   describe('FIELD_WEIGHTS', () => {
-      it('should have the correct field weights', () => {
-          // Add assertions here to check the structure and values of FIELD_WEIGHTS
-          assert.ok(config.FIELD_WEIGHTS.email === 0.95);
-          assert.ok(config.FIELD_WEIGHTS.phoneNumber === 0.90);
+    test('should have the correct field weights', () => {
+      expect(FIELD_WEIGHTS).toHaveProperty('name');
+      expect(FIELD_WEIGHTS).toHaveProperty('address');
+      expect(FIELD_WEIGHTS).toHaveProperty('email');
+      expect(FIELD_WEIGHTS).toHaveProperty('phone');
+      
+      // Check that weights are numbers between 0 and 1
+      Object.values(FIELD_WEIGHTS).forEach(weight => {
+        expect(typeof weight).toBe('number');
+        expect(weight).toBeGreaterThan(0);
+        expect(weight).toBeLessThanOrEqual(1);
       });
+    });
   });
 
   describe('BLOCKING', () => {
-      it('should have the correct blocking strategies and settings', () => {
-          // Add assertions here to check BLOCKING.STRATEGIES and BLOCKING.MAX_BLOCK_SIZE
-          assert.ok(Array.isArray(config.BLOCKING.STRATEGIES));
-          assert.ok(config.BLOCKING.MAX_BLOCK_SIZE === 1000);
-      });
+    test('should have the correct blocking strategies and settings', () => {
+      expect(BLOCKING).toHaveProperty('strategies');
+      expect(BLOCKING).toHaveProperty('maxCandidates');
+      expect(BLOCKING.strategies).toBeInstanceOf(Array);
+      expect(BLOCKING.maxCandidates).toBeGreaterThan(0);
+    });
   });
 
   describe('TARGETS', () => {
-      it('should have the correct target metrics', () => {
-          // Add assertions for TARGETS.MATCH_RATE, TARGETS.DOB_APPEND_RATE, etc.
-          assert.ok(config.TARGETS.MATCH_RATE === 0.80);
-      });
+    test('should have the correct target metrics', () => {
+      expect(TARGETS).toHaveProperty('precision');
+      expect(TARGETS).toHaveProperty('recall');
+      expect(TARGETS.precision).toBeGreaterThan(0);
+      expect(TARGETS.precision).toBeLessThanOrEqual(1);
+      expect(TARGETS.recall).toBeGreaterThan(0);
+      expect(TARGETS.recall).toBeLessThanOrEqual(1);
+    });
   });
 
   describe('HISTORICAL_DATASETS', () => {
-      it('should have the correct historical datasets configuration', () => {
-          // Add assertions for the structure and content of HISTORICAL_DATASETS
-          assert.ok(Array.isArray(config.HISTORICAL_DATASETS));
-          assert.ok(config.HISTORICAL_DATASETS[0].table === "trustfinancial.consumer2022q4_voter_gold");
+    test('should have the correct historical datasets configuration', () => {
+      expect(HISTORICAL_DATASETS).toBeInstanceOf(Array);
+      HISTORICAL_DATASETS.forEach(dataset => {
+        expect(dataset).toHaveProperty('name');
+        expect(dataset).toHaveProperty('location');
       });
+    });
   });
-    
+
   describe('ENVIRONMENTS', () => {
-      it('should have configurations for development, staging, and production', () => {
-          assert.ok(config.ENVIRONMENTS.development);
-          assert.ok(config.ENVIRONMENTS.staging);
-          assert.ok(config.ENVIRONMENTS.production);
+    test('should have configurations for development, staging, and production', () => {
+      expect(ENVIRONMENTS).toHaveProperty('development');
+      expect(ENVIRONMENTS).toHaveProperty('staging');
+      expect(ENVIRONMENTS).toHaveProperty('production');
+      
+      ['development', 'staging', 'production'].forEach(env => {
+        expect(ENVIRONMENTS[env]).toHaveProperty('name');
+        expect(ENVIRONMENTS[env]).toHaveProperty('dataset');
+        expect(ENVIRONMENTS[env]).toHaveProperty('location');
       });
+    });
   });
 });

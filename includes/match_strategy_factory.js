@@ -12,28 +12,23 @@ const { MultiTableWaterfallStrategy } = require("./match_strategies/multi_table_
 // Import column documentation 
 const docs = require("./docs"); // Fix path to docs.js - remove the leading slash
 
+/**
+ * Match Strategy Factory
+ * 
+ * Factory class for creating match strategy instances
+ */
 class MatchStrategyFactory {
+  /**
+   * Constructor
+   */
+  constructor() {
+    // Initialize factory
+  }
+
   canHandle(col1, col2) {
     const col1Type = docs.columns?.find(col => col.name === col1)?.type;
     const col2Type = docs.columns?.find(col => col.name === col2)?.type;
-
-    // Handle cases where column types may not be found in docs
-    if (!col1Type || !col2Type) {
-      return false;
-    }
-
-    // Implement logic to determine if the factory can handle the given columns
-    // based on their types and other criteria
-    if (col1Type === "STRING" && col2Type === "STRING") {
-      // Example: Handle string columns with exact matching
-      return true;
-    } else if (col1Type === "INTEGER" && col2Type === "INTEGER") {
-      // Example: Handle integer columns with range matching
-      return true;
-    }
-    // ... add more conditions for other column types and matching strategies ...
-
-    return false;
+    return col1Type === col2Type;
   }
 
   getStrategy(col1, col2) {
@@ -54,20 +49,20 @@ class MatchStrategyFactory {
   }
   
   /**
-   * Create a waterfall matching strategy
+   * Creates a waterfall strategy instance
    * @param {Object} options - Strategy options
    * @returns {WaterfallMatchStrategy} Waterfall strategy instance
    */
-  createWaterfallStrategy(options = {}) {
+  createWaterfallStrategy(options) {
     return new WaterfallMatchStrategy(options);
   }
   
   /**
-   * Create a multi-table waterfall matching strategy
+   * Creates a multi-table waterfall strategy instance
    * @param {Object} options - Strategy options
    * @returns {MultiTableWaterfallStrategy} Multi-table waterfall strategy instance
    */
-  createMultiTableWaterfallStrategy(options = {}) {
+  createMultiTableWaterfallStrategy(options) {
     return new MultiTableWaterfallStrategy(options);
   }
   
@@ -95,4 +90,4 @@ class MatchStrategyFactory {
 
 // Export the class itself rather than a singleton instance
 // This allows Dataform to properly require the module
-module.exports = MatchStrategyFactory;
+module.exports = { MatchStrategyFactory };

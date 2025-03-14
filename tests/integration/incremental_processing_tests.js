@@ -7,8 +7,10 @@
 
 const { TestType, TestPriority } = require('../../includes/validation/validation_registry');
 const { withErrorHandling } = require('../../includes/validation/error_handler');
-const matchingSystem = require('../../includes/matching_system');
-const historicalMatcher = require('../../includes/historical_matcher');
+
+// Import classes with destructuring
+const { MatchingSystem } = require('../../includes/matching_system');
+const { HistoricalMatcher } = require('../../includes/historical_matcher');
 
 exports.tests = [
   {
@@ -27,12 +29,12 @@ exports.tests = [
         incremental: 0.75 // 75% match rate for incremental data
       }
     },
-    testFn: async (context) => {
+    testFn: withErrorHandling(async function(context) {
       // Setup test parameters
       const { baseTable, incrementalTable, referenceTable, expectedMatchRates } = context.parameters;
       
       // Create historical matcher
-      const matcher = new historicalMatcher.HistoricalMatcher({
+      const matcher = new HistoricalMatcher({
         sourceTable: baseTable,
         targetTables: [referenceTable],
         outputTable: 'test_match_results',
@@ -83,7 +85,7 @@ exports.tests = [
           ? `Successfully processed incremental data with match rates: base=${(baseMatchRate * 100).toFixed(2)}%, incremental=${(incrementalMatchRate * 100).toFixed(2)}%`
           : `Failed to process incremental data correctly. Base success: ${baseSuccess}, Incremental success: ${incrementalSuccess}, Processed only new records: ${processedRecordsOnly}`
       };
-    }
+    }, 'INTEGRATION_TEST_ERROR')
   },
   
   {
@@ -109,7 +111,7 @@ exports.tests = [
       const { baseTable, updatesTable, newRecordsTable, referenceTable, expectedResults } = context.parameters;
       
       // Create historical matcher
-      const matcher = new historicalMatcher.HistoricalMatcher({
+      const matcher = new HistoricalMatcher({
         sourceTable: baseTable,
         targetTables: [referenceTable],
         outputTable: 'test_match_results',
@@ -186,7 +188,7 @@ exports.tests = [
       // Step 1: Process base data and measure time
       console.log(`Processing large base data from ${baseTable}...`);
       
-      const fullProcessingMatcher = new matchingSystem.MatchingSystem({
+      const fullProcessingMatcher = new MatchingSystem({
         sourceTable: baseTable,
         targetTables: [referenceTable],
         outputTable: 'test_full_results',
@@ -198,7 +200,7 @@ exports.tests = [
       const fullProcessingTime = Date.now() - fullProcessingStartTime;
       
       // Step 2: Process base data with incremental matcher
-      const incrementalMatcher = new historicalMatcher.HistoricalMatcher({
+      const incrementalMatcher = new HistoricalMatcher({
         sourceTable: baseTable,
         targetTables: [referenceTable],
         outputTable: 'test_incremental_results',
@@ -233,7 +235,7 @@ exports.tests = [
       console.log('Processing all incremental data in full mode for comparison...');
       
       const combinedIncrementalTable = 'test_all_incremental';
-      const fullReprocessingMatcher = new matchingSystem.MatchingSystem({
+      const fullReprocessingMatcher = new MatchingSystem({
         sourceTable: combinedIncrementalTable,
         targetTables: [referenceTable],
         outputTable: 'test_full_incremental_results',

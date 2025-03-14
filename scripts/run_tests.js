@@ -27,10 +27,10 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 // Import validation framework components
-const { validationRegistry, TestType, TestStatus, TestPriority } = require('../includes/validation/validation_registry');
+const { ValidationRegistry, TestType, TestStatus, TestPriority } = require('../includes/validation/validation_registry');
 const { defaultConfigManager } = require('../includes/validation/config_manager');
 const { ReportGenerator, ReportFormat } = require('../includes/validation/report_generator');
-const { documentationManager } = require('../includes/validation/documentation_manager');
+const documentationManager = require('../includes/validation/documentation_manager');
 const errorHandler = require('../includes/validation/error_handler');
 
 // Parse command line arguments
@@ -47,40 +47,32 @@ async function main() {
     }
     
     // Initialize components
-    await initializeFramework();
+    const registry = initializeFramework();
     
     // Display test plan
-    const testPlan = createTestPlan();
+    const testPlan = createTestPlan(registry, args);
     displayTestPlan(testPlan);
     
     // Run tests
     console.log('\nRunning tests...\n');
-    const startTime = Date.now();
-    const results = await runTests(testPlan);
-    const endTime = Date.now();
+    const startTime = new Date();
+    const results = await runTests(registry, testPlan);
     
     // Display summary
-    const summary = validationRegistry.getTestSummary();
-    summary.duration = endTime - startTime;
-    displaySummary(summary);
+    await displaySummary(results, startTime, registry);
     
     // Generate report if requested
     if (args.report) {
-      await generateReport(results, summary);
+      await generateReport(results, registry.getTestSummary());
     }
     
     // Return exit code based on test results
-    return summary.failed > 0 ? 1 : 0;
+    return results.some(result => result.status === 'failed') ? 1 : 0;
     
   } catch (error) {
-    console.error('\n❌ Error running tests:');
-    console.error(error.message);
-    
-    if (error.stack) {
-      console.error('\nStack trace:');
-      console.error(error.stack);
-    }
-    
+    console.error(`\n❌ Error running tests:\n${error.message}`);
+    console.error('\nStack trace:');
+    console.error(error);
     return 1;
   }
 }
@@ -206,66 +198,99 @@ async function loadConfiguration(configFile) {
 }
 
 /**
- * Initialize the validation framework
+ * Initializes the validation framework
+ * @returns {ValidationRegistry} Initialized validation registry
  */
-async function initializeFramework() {
+function initializeFramework() {
   console.log('Initializing validation framework...');
+  const registry = new ValidationRegistry();
   
-  // Initialize validation registry with test directories
-  await validationRegistry.initialize([
-    './tests/unit',
-    './tests/integration',
-    './tests/performance'
-  ]);
+  // Ensure proper class handling for factory pattern
+  ensureClassBasedFactoryPattern();
   
-  // Initialize documentation manager
-  await documentationManager.initialize('./docs');
+  // Scan for test files
+  scanTestFiles(registry, './tests/unit');
+  scanTestFiles(registry, './tests/integration');
+  scanTestFiles(registry, './tests/performance');
+  
+  // Explicitly mark as initialized
+  registry.initialized = true;
   
   console.log('Validation framework initialized successfully.\n');
+  return registry;
 }
 
 /**
- * Create test plan based on command line arguments
+ * Ensures proper class-based factory pattern setup in the global scope
+ * This helps tests use the class-based pattern correctly
+ */
+function ensureClassBasedFactoryPattern() {
+  try {
+    // Import factory classes and core classes
+    const { MatchStrategyFactory } = require('../includes/match_strategy_factory');
+    const { MatchingSystemFactory } = require('../includes/matching_system_factory');
+    const { HistoricalMatcherFactory } = require('../includes/historical_matcher_factory');
+    const { MatchingSystem } = require('../includes/matching_system');
+    const { HistoricalMatcher } = require('../includes/historical_matcher');
+    
+    // Create global factory instances
+    global.matchStrategyFactory = new MatchStrategyFactory();
+    global.matchingSystemFactory = new MatchingSystemFactory();
+    global.historicalMatcherFactory = new HistoricalMatcherFactory();
+    
+    // Make classes globally available for tests
+    global.MatchingSystem = MatchingSystem;
+    global.HistoricalMatcher = HistoricalMatcher;
+    
+    console.log('Class-based factory pattern initialized successfully.');
+  } catch (error) {
+    console.warn('Warning: Unable to set up global class-based factory pattern:', error.message);
+    console.warn('Stack trace:', error.stack);
+  }
+}
+
+/**
+ * Create test plan
+ * @param {ValidationRegistry} registry - Validation registry
+ * @param {Object} args - Command line arguments
  * @returns {Object} Test plan
  */
-function createTestPlan() {
-  const filters = {};
+function createTestPlan(registry, args) {
+  const allTests = registry.getAllTests();
+  let tests = [];
   
-  // Add filters based on command line arguments
+  // Filter tests by type
   if (args.type) {
-    filters.type = args.type;
-  }
-  
-  if (args.tags && args.tags.length > 0) {
-    filters.tags = args.tags;
-  }
-  
-  if (args.priority) {
-    filters.priority = args.priority;
-  }
-  
-  // Get tests based on filters
-  let testsToRun = [];
-  
-  if (args.testId) {
-    // Run specific test
-    const test = validationRegistry.getTest(args.testId);
-    
-    if (test) {
-      testsToRun = [test];
-    } else {
-      throw new Error(`Test not found: ${args.testId}`);
-    }
+    tests = allTests.filter(test => test.type.toLowerCase() === args.type.toLowerCase());
   } else {
-    // Run tests based on filters
-    testsToRun = validationRegistry.getAllTests(filters);
+    tests = [...allTests];
   }
   
+  // Filter tests by test ID
+  if (args.test) {
+    // Support partial matching for test IDs
+    const testPattern = args.test.toLowerCase();
+    const matchingTests = tests.filter(test => 
+      test.id.toLowerCase().includes(testPattern)
+    );
+    
+    if (matchingTests.length === 0) {
+      throw new Error(`Test not found: ${args.test}`);
+    }
+    
+    tests = matchingTests;
+  }
+  
+  // Filter tests by priority
+  if (args.priority) {
+    tests = tests.filter(test => test.priority.toLowerCase() === args.priority.toLowerCase());
+  }
+  
+  // Create test plan
   return {
-    tests: testsToRun,
-    totalTests: testsToRun.length,
-    filters,
-    parallel: args.parallel
+    tests,
+    parallel: args.parallel,
+    type: args.type
   };
 }
 
@@ -275,18 +300,10 @@ function createTestPlan() {
  */
 function displayTestPlan(testPlan) {
   console.log(`Test Plan:`);
-  console.log(`- Total tests: ${testPlan.totalTests}`);
+  console.log(`- Total tests: ${testPlan.tests.length}`);
   
-  if (testPlan.filters.type) {
-    console.log(`- Type: ${testPlan.filters.type}`);
-  }
-  
-  if (testPlan.filters.tags && testPlan.filters.tags.length > 0) {
-    console.log(`- Tags: ${testPlan.filters.tags.join(', ')}`);
-  }
-  
-  if (testPlan.filters.priority) {
-    console.log(`- Priority: ${testPlan.filters.priority}`);
+  if (testPlan.type) {
+    console.log(`- Type: ${testPlan.type}`);
   }
   
   console.log(`- Execution mode: ${testPlan.parallel ? 'Parallel' : 'Sequential'}`);
@@ -295,26 +312,28 @@ function displayTestPlan(testPlan) {
   const testsByType = {};
   
   testPlan.tests.forEach(test => {
-    if (!testsByType[test.type]) {
-      testsByType[test.type] = 0;
-    }
+    const type = test.type.toLowerCase();
+    testsByType[type] = (testsByType[type] || 0) + 1;
+  });
+  
+  if (Object.keys(testsByType).length > 0) {
+    console.log(`\nTest breakdown by type:`);
     
-    testsByType[test.type]++;
-  });
+    for (const type in testsByType) {
+      console.log(`- ${type}: ${testsByType[type]} tests`);
+    }
+  }
   
-  console.log('\nTest breakdown by type:');
-  
-  Object.entries(testsByType).forEach(([type, count]) => {
-    console.log(`- ${type}: ${count} tests`);
-  });
+  console.log('');
 }
 
 /**
  * Run tests according to test plan
+ * @param {ValidationRegistry} registry - Validation registry
  * @param {Object} testPlan - Test plan
  * @returns {Array<Object>} Test results
  */
-async function runTests(testPlan) {
+async function runTests(registry, testPlan) {
   // Set execution options
   const options = {
     parallelExecution: testPlan.parallel,
@@ -326,7 +345,7 @@ async function runTests(testPlan) {
   };
   
   // Run tests
-  return await validationRegistry.runTests({
+  return await registry.runTests({
     testIds: testPlan.tests.map(test => test.id),
     ...options
   });
@@ -334,29 +353,36 @@ async function runTests(testPlan) {
 
 /**
  * Display test summary
- * @param {Object} summary - Test summary
+ * @param {Array<Object>} testResults - Test results
+ * @param {number} startTime - Test start time
+ * @param {ValidationRegistry} validationRegistry - Validation registry
  */
-function displaySummary(summary) {
+async function displaySummary(testResults, startTime, validationRegistry) {
+  const endTime = new Date();
+  const executionTime = (endTime - startTime) / 1000;
+  
+  const totalTests = validationRegistry.getAllTests().length;
+  const executedTests = testResults.length;
+  const passedTests = testResults.filter(result => result.status === 'passed').length;
+  const failedTests = testResults.filter(result => result.status === 'failed').length;
+  
+  // Calculate coverage
+  const coverage = Math.round((executedTests / totalTests) * 100);
+  
   console.log('\n=== Test Results Summary ===');
-  console.log(`Total tests:     ${summary.total}`);
-  console.log(`Executed:        ${summary.executed}`);
-  console.log(`Passed:          ${summary.passed}`);
-  console.log(`Failed:          ${summary.failed}`);
-  console.log(`Execution Time:  ${(summary.duration / 1000).toFixed(2)}s`);
-  console.log(`Coverage:        ${summary.coverage.percentage}%`);
+  console.log(`Total tests:     ${totalTests}`);
+  console.log(`Executed:        ${executedTests}`);
+  console.log(`Passed:          ${passedTests}`);
+  console.log(`Failed:          ${failedTests}`);
+  console.log(`Execution Time:  ${executionTime.toFixed(2)}s`);
+  console.log(`Coverage:        ${coverage}%`);
   
-  // Display failed tests if any
-  const failedResults = validationRegistry.getAllTestResults({ passed: false });
-  
-  if (failedResults.length > 0) {
+  // Display failed tests
+  const failedTestResults = testResults.filter(result => result.status === 'failed');
+  if (failedTestResults.length > 0) {
     console.log('\nFailed Tests:');
-    
-    failedResults.forEach(result => {
-      console.log(`- ${result.name}`);
-      
-      if (result.error) {
-        console.log(`  Error: ${result.error.message}`);
-      }
+    failedTestResults.forEach(result => {
+      console.log(`- ${result.name}: ${result.error}`);
     });
   }
 }
@@ -364,35 +390,98 @@ function displaySummary(summary) {
 /**
  * Generate test report
  * @param {Array<Object>} results - Test results
- * @param {Object} summary - Test summary
+ * @param {ValidationRegistry} validationRegistry - Validation registry
  */
-async function generateReport(results, summary) {
+async function generateReport(results, validationRegistry) {
   console.log('\nGenerating test report...');
   
   // Create report generator
-  const reportGenerator = new ReportGenerator({
-    outputDir: args.outputDir
-  });
+  const reportGenerator = new ReportGenerator();
   
   // Generate report
   const reportPath = await reportGenerator.generateReport(
     results,
-    summary,
+    {
+      total: validationRegistry.getAllTests().length,
+      executed: results.length,
+      passed: results.filter(r => r.status === 'passed').length,
+      failed: results.filter(r => r.status === 'failed').length
+    },
     args.reportFormat,
     'test_report'
   );
   
   // Generate summary file
-  await reportGenerator.generateSummaryFile(summary);
+  await reportGenerator.generateSummaryFile({
+    total: validationRegistry.getAllTests().length,
+    executed: results.length,
+    passed: results.filter(r => r.status === 'passed').length,
+    failed: results.filter(r => r.status === 'failed').length
+  });
   
   // Generate performance visualization if there are performance tests
-  const performanceResults = results.filter(result => result.type === TestType.PERFORMANCE);
+  const performanceTests = results.filter(result => result.type === TestType.PERFORMANCE);
   
-  if (performanceResults.length > 0) {
-    await reportGenerator.generatePerformanceVisualization(performanceResults);
+  if (performanceTests.length > 0) {
+    await reportGenerator.generatePerformanceVisualization(performanceTests);
   }
   
-  console.log(`Test report generated: ${reportPath}`);
+  console.log(`Report generated: ${reportPath}`);
+}
+
+/**
+ * Scans a directory for test files and registers them with the validation registry
+ * @param {ValidationRegistry} registry - Validation registry
+ * @param {string} directory - Directory to scan
+ */
+function scanTestFiles(registry, directory) {
+  if (!fs.existsSync(directory)) {
+    console.warn(`Warning: Directory does not exist: ${directory}`);
+    return;
+  }
+  
+  console.log(`Scanning for test files in directory: ${directory}`);
+  
+  // Find all JavaScript files in the directory
+  const files = fs.readdirSync(directory)
+    .filter(file => file.endsWith('.js'))
+    .map(file => path.resolve(directory, file));
+  
+  console.log(`Found ${files.length} test files.`);
+  
+  // Load and register each test file
+  let registeredTests = 0;
+  
+  for (const file of files) {
+    try {
+      console.log(`Loading test file: ${file}`);
+      
+      // Clear require cache to ensure fresh load
+      delete require.cache[file];
+      
+      // Load the test file
+      const testModule = require(file);
+      
+      // Check if the module exports tests
+      if (testModule.tests && Array.isArray(testModule.tests)) {
+        // Register each test
+        for (const test of testModule.tests) {
+          try {
+            registry.registerTest(test);
+            registeredTests++;
+          } catch (error) {
+            console.warn(`  Warning: Failed to register test ${test.id}: ${error.message}`);
+          }
+        }
+      } else {
+        console.log(`No tests found in file: ${file}`);
+      }
+    } catch (error) {
+      console.warn(`  Warning: Failed to load test file ${file}: ${error.message}`);
+    }
+  }
+  
+  console.log(`Registered ${registeredTests} tests.`);
 }
 
 // Run main function and exit with appropriate code

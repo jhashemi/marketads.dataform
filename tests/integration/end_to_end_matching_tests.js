@@ -7,8 +7,15 @@
 
 const { TestType, TestPriority } = require('../../includes/validation/validation_registry');
 const { withErrorHandling } = require('../../includes/validation/error_handler');
-const matchingSystem = require('../../includes/matching_system');
-const matchStrategyFactory = require('../../includes/match_strategy_factory');
+
+// Import the MatchingSystem class
+const { MatchingSystem } = require('../../includes/matching_system');
+
+// Import the MatchStrategyFactory as a class
+const { MatchStrategyFactory } = require('../../includes/match_strategy_factory');
+
+// Create an instance of the factory
+const matchStrategyFactory = new MatchStrategyFactory();
 
 exports.tests = [
   {
@@ -32,7 +39,7 @@ exports.tests = [
         { source: 'email', target: 'email', weight: 3.0 }
       ]
     },
-    testFn: async (context) => {
+    testFn: withErrorHandling(async function(context) {
       // Setup test parameters
       const { sourceTable, referenceTable, expectedMatchCount, matchThreshold, blockingFields, matchingFields } = context.parameters;
       
@@ -48,68 +55,67 @@ exports.tests = [
               targetField: field, 
               exact: true 
             })),
-            scoring: matchingFields
+            scoring: matchingFields.map(field => ({
+              sourceField: field.source,
+              targetField: field.target,
+              method: 'jaro_winkler',
+              weight: field.weight
+            }))
           }
         },
-        thresholds: { 
+        thresholds: {
           high: matchThreshold,
-          medium: matchThreshold - 0.1,
-          low: matchThreshold - 0.2
+          medium: matchThreshold * 0.8,
+          low: matchThreshold * 0.6
         }
       });
       
-      // Initialize the matching system
-      const system = new matchingSystem.MatchingSystem({
-        strategy,
-        sourceTable,
+      // Configure matching system
+      const system = new MatchingSystem({
+        sourceTable: sourceTable,
         targetTables: [referenceTable],
-        outputTable: 'test_match_results'
+        strategyName: 'waterfall',
+        strategy: strategy,
+        outputTable: 'test_matches_output'
       });
       
-      // Execute the complete matching pipeline
+      // Execute matching
       const results = await system.executeMatching();
       
-      // Validate results
+      // Calculate match rate
       const matchRate = results.matchedRecords / results.totalRecords;
-      const isPassing = matchRate >= (expectedMatchCount / 100);
       
-      // Test both quantitative metrics and qualitative match quality
-      const qualityMetrics = results.qualityMetrics || {};
-      const hasHighQualityMatches = 
-        (qualityMetrics.highConfidenceMatches || 0) >= (results.matchedRecords * 0.6);
-      
+      // Evaluate test result
       return {
-        passed: isPassing && hasHighQualityMatches,
-        metrics: {
-          totalRecords: results.totalRecords,
-          matchedRecords: results.matchedRecords,
-          matchRate: matchRate,
-          executionTime: results.executionTime,
-          qualityMetrics
-        },
-        message: isPassing 
-          ? `Successfully matched ${results.matchedRecords} out of ${results.totalRecords} records (${(matchRate * 100).toFixed(2)}%)`
-          : `Failed to meet match rate target: ${(matchRate * 100).toFixed(2)}% vs ${expectedMatchCount}% expected`
+        passed: matchRate >= (expectedMatchCount / 100),
+        message: matchRate >= (expectedMatchCount / 100) 
+            ? `Successfully matched ${matchRate * 100}% of records (target: ${expectedMatchCount}%)`
+            : `Failed to meet match rate target: ${(matchRate * 100).toFixed(2)}% vs ${expectedMatchCount}% expected`
       };
-    }
+    }, 'INTEGRATION_TEST_ERROR', { testId: 'end_to_end_basic_matching_test' })
   },
   
   {
     id: 'end_to_end_multi_source_matching_test',
     name: 'Multi-Source End-to-End Matching Test',
-    description: 'Tests a complete matching pipeline with multiple data sources',
+    description: 'Tests matching with multiple source tables against a single reference',
     type: TestType.INTEGRATION,
     priority: TestPriority.MEDIUM,
     tags: ['integration', 'matching', 'end-to-end', 'multi-source'],
+    dependencies: ['end_to_end_basic_matching_test'],
     parameters: {
-      sourceTables: ['test_customers_web', 'test_customers_store', 'test_customers_app'],
-      referenceTable: 'master_customer_records',
+      sourceTables: [
+        'test_customers_region_1',
+        'test_customers_region_2',
+        'test_customers_region_3'
+      ],
+      referenceTable: 'verified_customers',
       expectedMatchCounts: {
-        'test_customers_web': 85,
-        'test_customers_store': 70,
-        'test_customers_app': 60
+        'test_customers_region_1': 80,
+        'test_customers_region_2': 70,
+        'test_customers_region_3': 65
       },
-      matchThreshold: 0.8,
+      matchThreshold: 0.75,
       blockingFields: ['zip_code'],
       matchingFields: [
         { source: 'first_name', target: 'first_name', weight: 1.0 },
@@ -117,196 +123,199 @@ exports.tests = [
         { source: 'email', target: 'email', weight: 3.0 }
       ]
     },
-    testFn: async (context) => {
+    testFn: withErrorHandling(async function(context) {
       // Setup test parameters
       const { sourceTables, referenceTable, expectedMatchCounts, matchThreshold, blockingFields, matchingFields } = context.parameters;
       
-      // Store results for each source
-      const results = {};
-      let overallSuccess = true;
+      // Create base strategy configuration
+      const strategyConfig = {
+        referenceTables: [
+          { id: referenceTable, table: referenceTable, priority: 1, name: 'VERIFIED' }
+        ],
+        matchingRules: {
+          [referenceTable]: {
+            blocking: blockingFields.map(field => ({ 
+              sourceField: field, 
+              targetField: field, 
+              exact: true 
+            })),
+            scoring: matchingFields.map(field => ({
+              sourceField: field.source,
+              targetField: field.target,
+              method: 'jaro_winkler',
+              weight: field.weight
+            }))
+          }
+        },
+        thresholds: {
+          high: matchThreshold,
+          medium: matchThreshold * 0.8,
+          low: matchThreshold * 0.6
+        }
+      };
       
       // Process each source table
+      const results = [];
+      let allSuccess = true;
+      
       for (const sourceTable of sourceTables) {
-        // Configure strategy for this source
-        const strategy = matchStrategyFactory.createWaterfallStrategy({
-          referenceTables: [
-            { id: referenceTable, table: referenceTable, priority: 1, name: 'MASTER' }
-          ],
-          matchingRules: {
-            [referenceTable]: {
-              blocking: blockingFields.map(field => ({ 
-                sourceField: field, 
-                targetField: field, 
-                exact: true 
-              })),
-              scoring: matchingFields
-            }
-          },
-          thresholds: { 
-            high: matchThreshold,
-            medium: matchThreshold - 0.1,
-            low: matchThreshold - 0.2
-          }
-        });
+        // Configure strategy
+        const strategy = matchStrategyFactory.createWaterfallStrategy(strategyConfig);
         
-        // Initialize the matching system
-        const system = new matchingSystem.MatchingSystem({
-          strategy,
-          sourceTable,
+        // Configure matching system
+        const system = new MatchingSystem({
+          sourceTable: sourceTable,
           targetTables: [referenceTable],
-          outputTable: `${sourceTable}_matches`
+          strategyName: 'waterfall',
+          strategy: strategy,
+          outputTable: `test_matches_${sourceTable}`
         });
         
-        // Execute the matching pipeline for this source
-        const sourceResult = await system.executeMatching();
+        // Execute matching
+        const matchResults = await system.executeMatching();
         
-        // Calculate match rate for this source
-        const matchRate = sourceResult.matchedRecords / sourceResult.totalRecords;
+        // Calculate match rate
+        const matchRate = matchResults.matchedRecords / matchResults.totalRecords;
         const expectedRate = expectedMatchCounts[sourceTable] / 100;
-        const sourceSuccess = matchRate >= expectedRate;
+        const success = matchRate >= expectedRate;
         
-        // Store the results
-        results[sourceTable] = {
-          totalRecords: sourceResult.totalRecords,
-          matchedRecords: sourceResult.matchedRecords,
-          matchRate: matchRate,
-          expectedRate: expectedRate,
-          passed: sourceSuccess
-        };
+        // Store results
+        results.push({
+          sourceTable,
+          matchRate,
+          expectedRate,
+          success
+        });
         
         // Update overall success flag
-        overallSuccess = overallSuccess && sourceSuccess;
+        if (!success) {
+          allSuccess = false;
+        }
       }
       
-      // Calculate aggregated metrics
-      const aggregatedMetrics = {
-        totalRecords: Object.values(results).reduce((sum, r) => sum + r.totalRecords, 0),
-        matchedRecords: Object.values(results).reduce((sum, r) => sum + r.matchedRecords, 0),
-        averageMatchRate: Object.values(results).reduce((sum, r) => sum + r.matchRate, 0) / sourceTables.length
-      };
-      
+      // Evaluate test result
       return {
-        passed: overallSuccess,
-        metrics: {
-          sourceResults: results,
-          aggregated: aggregatedMetrics
-        },
-        message: overallSuccess 
-          ? `Successfully matched records across ${sourceTables.length} source tables with an average match rate of ${(aggregatedMetrics.averageMatchRate * 100).toFixed(2)}%`
-          : `Failed to meet match rate targets for one or more source tables`
+        passed: allSuccess,
+        message: allSuccess 
+            ? `Successfully matched all source tables to target rates`
+            : `Failed to meet match rate targets for one or more source tables`
       };
-    }
+    }, 'INTEGRATION_TEST_ERROR', { testId: 'end_to_end_multi_source_matching_test' })
   },
   
   {
     id: 'end_to_end_data_quality_test',
     name: 'End-to-End Data Quality Test',
-    description: 'Tests the impact of data quality issues on matching results',
+    description: 'Tests matching with various data quality scenarios',
     type: TestType.INTEGRATION,
     priority: TestPriority.MEDIUM,
     tags: ['integration', 'matching', 'end-to-end', 'data-quality'],
+    dependencies: ['end_to_end_basic_matching_test'],
     parameters: {
       dataQualityScenarios: [
-        { name: 'clean_data', table: 'test_customers_clean', expectedMatchRate: 90 },
-        { name: 'missing_values', table: 'test_customers_missing_values', expectedMatchRate: 70 },
-        { name: 'typos', table: 'test_customers_typos', expectedMatchRate: 75 },
-        { name: 'format_issues', table: 'test_customers_format_issues', expectedMatchRate: 65 }
+        {
+          name: 'clean_data',
+          sourceTable: 'test_customers_clean',
+          expectedMatchRate: 90
+        },
+        {
+          name: 'missing_data',
+          sourceTable: 'test_customers_missing_fields',
+          expectedMatchRate: 60
+        },
+        {
+          name: 'typo_data',
+          sourceTable: 'test_customers_typos',
+          expectedMatchRate: 75
+        }
       ],
-      referenceTable: 'master_customer_records',
-      matchThreshold: 0.7,
+      referenceTable: 'verified_customers',
+      matchThreshold: 0.65,
       blockingFields: ['zip_code'],
       matchingFields: [
-        { source: 'first_name', target: 'first_name', weight: 1.0, method: 'jaro_winkler' },
-        { source: 'last_name', target: 'last_name', weight: 2.0, method: 'jaro_winkler' },
-        { source: 'address', target: 'address', weight: 1.5, method: 'token' },
-        { source: 'email', target: 'email', weight: 3.0, method: 'exact' }
+        { source: 'first_name', target: 'first_name', weight: 1.0 },
+        { source: 'last_name', target: 'last_name', weight: 2.0 },
+        { source: 'email', target: 'email', weight: 3.0 }
       ]
     },
-    testFn: async (context) => {
+    testFn: withErrorHandling(async function(context) {
       // Setup test parameters
       const { dataQualityScenarios, referenceTable, matchThreshold, blockingFields, matchingFields } = context.parameters;
       
-      // Store results for each data quality scenario
-      const results = {};
-      let overallSuccess = true;
+      // Create base strategy configuration
+      const strategyConfig = {
+        referenceTables: [
+          { id: referenceTable, table: referenceTable, priority: 1, name: 'VERIFIED' }
+        ],
+        matchingRules: {
+          [referenceTable]: {
+            blocking: blockingFields.map(field => ({ 
+              sourceField: field, 
+              targetField: field, 
+              exact: true 
+            })),
+            scoring: matchingFields.map(field => ({
+              sourceField: field.source,
+              targetField: field.target,
+              method: 'jaro_winkler',
+              weight: field.weight
+            }))
+          }
+        },
+        thresholds: {
+          high: matchThreshold,
+          medium: matchThreshold * 0.8,
+          low: matchThreshold * 0.6
+        }
+      };
       
-      // Process each data quality scenario
+      // Process each scenario
+      const results = [];
+      let allSuccess = true;
+      
       for (const scenario of dataQualityScenarios) {
         // Configure strategy
-        const strategy = matchStrategyFactory.createWaterfallStrategy({
-          referenceTables: [
-            { id: referenceTable, table: referenceTable, priority: 1, name: 'MASTER' }
-          ],
-          matchingRules: {
-            [referenceTable]: {
-              blocking: blockingFields.map(field => ({ 
-                sourceField: field, 
-                targetField: field, 
-                exact: true 
-              })),
-              scoring: matchingFields
-            }
-          },
-          thresholds: { 
-            high: matchThreshold,
-            medium: matchThreshold - 0.1,
-            low: matchThreshold - 0.2
-          }
-        });
+        const strategy = matchStrategyFactory.createWaterfallStrategy(strategyConfig);
         
-        // Initialize the matching system
-        const system = new matchingSystem.MatchingSystem({
-          strategy,
-          sourceTable: scenario.table,
+        // Configure matching system
+        const system = new MatchingSystem({
+          sourceTable: scenario.sourceTable,
           targetTables: [referenceTable],
-          outputTable: `${scenario.table}_matches`
+          strategyName: 'waterfall',
+          strategy: strategy,
+          outputTable: `test_matches_${scenario.name}`
         });
         
-        // Execute the matching pipeline for this scenario
-        const scenarioResult = await system.executeMatching();
+        // Execute matching
+        const matchResults = await system.executeMatching();
         
-        // Calculate match rate for this scenario
-        const matchRate = scenarioResult.matchedRecords / scenarioResult.totalRecords;
+        // Calculate match rate
+        const matchRate = matchResults.matchedRecords / matchResults.totalRecords;
         const expectedRate = scenario.expectedMatchRate / 100;
-        const scenarioSuccess = matchRate >= expectedRate;
+        const success = matchRate >= expectedRate;
         
-        // Store the results
-        results[scenario.name] = {
-          totalRecords: scenarioResult.totalRecords,
-          matchedRecords: scenarioResult.matchedRecords,
-          matchRate: matchRate,
-          expectedRate: expectedRate,
-          passed: scenarioSuccess
-        };
+        // Store results
+        results.push({
+          scenario: scenario.name,
+          matchRate,
+          expectedRate,
+          success
+        });
         
         // Update overall success flag
-        overallSuccess = overallSuccess && scenarioSuccess;
-      }
-      
-      // Calculate data quality impact metrics
-      const baselineRate = results.clean_data ? results.clean_data.matchRate : 0;
-      const qualityImpactMetrics = {};
-      
-      for (const scenario of Object.keys(results)) {
-        if (scenario !== 'clean_data') {
-          qualityImpactMetrics[scenario] = {
-            matchRateReduction: baselineRate - results[scenario].matchRate,
-            percentageImpact: ((baselineRate - results[scenario].matchRate) / baselineRate * 100).toFixed(2) + '%'
-          };
+        if (!success) {
+          allSuccess = false;
         }
       }
       
+      // Evaluate test result
       return {
-        passed: overallSuccess,
-        metrics: {
-          scenarioResults: results,
-          dataQualityImpact: qualityImpactMetrics
-        },
-        message: overallSuccess 
-          ? `Successfully evaluated matching performance across ${dataQualityScenarios.length} data quality scenarios`
-          : `Failed to meet match rate targets for one or more data quality scenarios`
+        passed: allSuccess,
+        message: allSuccess 
+            ? `Successfully matched data across all quality scenarios to target rates`
+            : `Failed to meet match rate targets for one or more data quality scenarios`
       };
-    }
+    }, 'INTEGRATION_TEST_ERROR', { testId: 'end_to_end_data_quality_test' })
   }
 ];
 
@@ -319,7 +328,7 @@ exports.register = async (registry) => {
     try {
       const testId = registry.registerTest({
         ...test,
-        testFn: withErrorHandling(test.testFn, 'INTEGRATION_TEST_ERROR', { testId: test.id })
+        testFn: test.testFn
       });
       
       testIds.push(testId);

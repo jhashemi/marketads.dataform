@@ -7,7 +7,9 @@
 
 const { TestType, TestPriority } = require('../../includes/validation/validation_registry');
 const { withErrorHandling } = require('../../includes/validation/error_handler');
-const matchingSystem = require('../../includes/matching_system');
+
+// Import the MatchingSystem as a class
+const { MatchingSystem } = require('../../includes/matching_system');
 
 exports.tests = [
   {
@@ -25,14 +27,14 @@ exports.tests = [
       transitiveMatchDepth: 2, // Maximum link depth for transitive matches
       clusterOutputTable: 'test_customer_clusters'
     },
-    testFn: async (context) => {
+    testFn: withErrorHandling(async function(context) {
       // Setup test parameters
       const { sourceTable, referenceTable, expectedDirectMatches, expectedTransitiveMatches, transitiveMatchDepth, clusterOutputTable } = context.parameters;
       
       // Step 1: Run matching without transitive closure
       console.log(`Running direct matching on ${sourceTable}...`);
       
-      const directMatcher = new matchingSystem.MatchingSystem({
+      const directMatcher = new MatchingSystem({
         sourceTable,
         targetTables: [referenceTable],
         outputTable: 'test_direct_matches',
@@ -47,7 +49,7 @@ exports.tests = [
       // Step 2: Run matching with transitive closure
       console.log(`Running matching with transitive closure on ${sourceTable}...`);
       
-      const transitiveMatcher = new matchingSystem.MatchingSystem({
+      const transitiveMatcher = new MatchingSystem({
         sourceTable,
         targetTables: [referenceTable],
         outputTable: 'test_transitive_matches',
@@ -80,7 +82,7 @@ exports.tests = [
           ? `Successfully applied transitive closure, finding ${additionalMatches} additional matches and creating ${clusterMetrics.clusterCount} clusters`
           : `Failed to correctly apply transitive closure. Direct matches: ${directResults.matchedRecords}/${expectedDirectMatches}, Additional transitive matches: ${additionalMatches}/${expectedTransitiveMatches}`
       };
-    }
+    }, 'INTEGRATION_TEST_ERROR')
   },
   
   {
@@ -113,7 +115,7 @@ exports.tests = [
       // Step 1: Run direct matching (depth 0)
       console.log(`Running direct matching on ${sourceTable}...`);
       
-      const directMatcher = new matchingSystem.MatchingSystem({
+      const directMatcher = new MatchingSystem({
         sourceTable,
         targetTables: [referenceTable],
         outputTable: `${baseOutputTable}_direct`,
@@ -137,7 +139,7 @@ exports.tests = [
       for (const depth of transitiveMatchDepths) {
         console.log(`Running matching with transitive closure depth ${depth} on ${sourceTable}...`);
         
-        const transitiveMatcher = new matchingSystem.MatchingSystem({
+        const transitiveMatcher = new MatchingSystem({
           sourceTable,
           targetTables: [referenceTable],
           outputTable: `${baseOutputTable}_depth${depth}`,
@@ -217,7 +219,7 @@ exports.tests = [
       // Step 1: Run direct matching as baseline
       console.log(`Running direct matching on ${sourceTable}...`);
       
-      const directMatcher = new matchingSystem.MatchingSystem({
+      const directMatcher = new MatchingSystem({
         sourceTable,
         targetTables: [referenceTable],
         outputTable: `${baseOutputTable}_direct`,
@@ -234,7 +236,7 @@ exports.tests = [
       for (const threshold of confidenceThresholds) {
         console.log(`Running transitive closure with confidence threshold ${threshold}...`);
         
-        const transitiveMatcher = new matchingSystem.MatchingSystem({
+        const transitiveMatcher = new MatchingSystem({
           sourceTable,
           targetTables: [referenceTable],
           outputTable: `${baseOutputTable}_threshold${threshold}`,

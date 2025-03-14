@@ -324,9 +324,9 @@ class ValidationRegistry {
   }
   
   /**
-   * Run a single test
-   * @param {string} testId - Test ID
-   * @param {Object} context - Test execution context
+   * Run a test by ID
+   * @param {string} testId - ID of the test to run
+   * @param {Object} context - Context object to pass to the test
    * @returns {Promise<TestResult>} Test result
    */
   async runTest(testId, context = {}) {
@@ -374,6 +374,11 @@ class ValidationRegistry {
         result.duration = result.endTime - result.startTime;
         this.testResults.set(test.id, result);
         return result;
+      }
+      
+      // Ensure context has parameters
+      if (!context.parameters && test.parameters) {
+        context.parameters = test.parameters;
       }
       
       // Run test
