@@ -6,6 +6,7 @@
  */
 
 const { MarketAdsError } = require('./error_types');
+const { ValidationError } = require('./validation_error');
 
 /**
  * ErrorHandler class for centralized error handling
@@ -14,195 +15,138 @@ class ErrorHandler {
   /**
    * Create a new ErrorHandler
    * @param {Object} options - Configuration options
-   * @param {Function} options.logger - Logger function
-   * @param {boolean} options.captureStackTrace - Whether to capture stack traces
-   * @param {boolean} options.logErrors - Whether to log errors
-   * @param {Function} options.onError - Callback function for error events
+   * @param {Function} options.logger - Custom logger function
+   * @param {Function} options.classifier - Custom error classifier function
+   * @param {Function} options.transformer - Custom error transformer function
    */
   constructor(options = {}) {
-    this.logger = options.logger || console;
-    this.captureStackTrace = options.captureStackTrace !== false;
-    this.logErrors = options.logErrors !== false;
-    this.onError = options.onError || (() => {});
-    this.errorListeners = [];
+    this.logger = options.logger;
+    this.classifier = options.classifier;
+    this.transformer = options.transformer;
   }
 
   /**
    * Handle an error
    * @param {Error} error - The error to handle
-   * @param {Object} context - Additional context information
+   * @param {Function} callback - Optional callback function to receive the error
    * @returns {Error} The handled error
    */
-  handleError(error, context = {}) {
-    // Wrap non-MarketAdsError errors
-    const wrappedError = this.wrapError(error, context);
+  handle(error, callback) {
+    // Transform the error if needed
+    const transformedError = this.transform(error);
     
-    // Log the error if logging is enabled
-    if (this.logErrors) {
-      this.logError(wrappedError);
+    // Log the error
+    this.log(transformedError);
+    
+    // Call the callback if provided
+    if (typeof callback === 'function') {
+      callback(transformedError);
     }
     
-    // Notify error listeners
-    this.notifyErrorListeners(wrappedError);
-    
-    // Call the onError callback
-    this.onError(wrappedError);
-    
-    return wrappedError;
+    return transformedError;
   }
 
   /**
-   * Wrap a standard Error in a MarketAdsError
-   * @param {Error} error - The error to wrap
-   * @param {Object} context - Additional context information
-   * @returns {MarketAdsError} The wrapped error
+   * Transform an error into a MarketAdsError if needed
+   * @param {Error} error - The error to transform
+   * @returns {Error} The transformed error
    */
-  wrapError(error, context = {}) {
-    // If it's already a MarketAdsError, just add context
+  transform(error) {
+    // If a custom transformer is provided, use it
+    if (typeof this.transformer === 'function') {
+      return this.transformer(error);
+    }
+    
+    // If it's already a MarketAdsError, return it as is
     if (error instanceof MarketAdsError) {
-      error.context = { ...error.context, ...context };
       return error;
     }
     
     // Otherwise, wrap it in a MarketAdsError
     return new MarketAdsError(error.message, {
       cause: error,
-      context,
-      code: this.categorizeError(error)
+      code: this.classify(error)
     });
   }
 
   /**
-   * Categorize an error based on its properties
-   * @param {Error} error - The error to categorize
-   * @returns {string} The error code
+   * Classify an error to determine its type
+   * @param {Error} error - The error to classify
+   * @returns {string} The error classification
    */
-  categorizeError(error) {
-    // Check for common error types and assign appropriate codes
-    if (error.name === 'SyntaxError') {
-      return 'SYNTAX_ERROR';
-    } else if (error.name === 'ReferenceError') {
-      return 'REFERENCE_ERROR';
-    } else if (error.name === 'TypeError') {
-      return 'TYPE_ERROR';
-    } else if (error.name === 'RangeError') {
-      return 'RANGE_ERROR';
-    } else if (error.code === 'ENOENT') {
-      return 'FILE_NOT_FOUND';
-    } else if (error.code === 'EACCES') {
-      return 'PERMISSION_DENIED';
-    } else if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEDOUT') {
-      return 'TIMEOUT_ERROR';
-    } else if (error.code === 'ECONNREFUSED') {
-      return 'CONNECTION_REFUSED';
-    } else if (error.code === 'ECONNRESET') {
-      return 'CONNECTION_RESET';
-    } else if (error.code && error.code.startsWith('ERR_')) {
-      return error.code;
+  classify(error) {
+    if (typeof this.classifier === 'function') {
+      return this.classifier(error);
     }
-    
-    return 'UNKNOWN_ERROR';
+
+    if (error instanceof ValidationError) {
+      return 'VALIDATION';
+    } else if (error instanceof MarketAdsError) {
+      return 'MARKETADS';
+    } else if (error.name === 'DataformError') {
+      return 'DATAFORM';
+    } else if (error.name === 'BigQueryError') {
+      return 'BIGQUERY';
+    }
+
+    return 'UNKNOWN';
   }
 
   /**
    * Log an error
    * @param {Error} error - The error to log
    */
-  logError(error) {
-    const errorObj = error instanceof MarketAdsError ? error.toJSON() : {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    };
+  log(error) {
+    // If a custom logger is provided, use it
+    if (typeof this.logger === 'function') {
+      this.logger(error);
+      return;
+    }
     
-    // Log based on severity
-    if (error instanceof MarketAdsError && error.severity === 'CRITICAL') {
-      this.logger.error('CRITICAL ERROR:', errorObj);
-    } else if (error instanceof MarketAdsError && error.severity === 'WARNING') {
-      this.logger.warn('WARNING:', errorObj);
+    // Default logging based on severity
+    if (error instanceof MarketAdsError) {
+      const severity = error.severity || 'ERROR';
+      
+      if (severity === 'ERROR') {
+        console.error(error);
+      } else if (severity === 'WARNING') {
+        console.warn(error);
+      } else if (severity === 'INFO') {
+        console.info(error);
+      } else {
+        console.error(error);
+      }
     } else {
-      this.logger.error('ERROR:', errorObj);
+      console.error(error);
     }
   }
 
   /**
-   * Add an error listener
-   * @param {Function} listener - The listener function
-   * @returns {Function} Function to remove the listener
-   */
-  addErrorListener(listener) {
-    this.errorListeners.push(listener);
-    
-    // Return a function to remove the listener
-    return () => {
-      this.errorListeners = this.errorListeners.filter(l => l !== listener);
-    };
-  }
-
-  /**
-   * Notify all error listeners
-   * @param {Error} error - The error to notify about
-   */
-  notifyErrorListeners(error) {
-    this.errorListeners.forEach(listener => {
-      try {
-        listener(error);
-      } catch (listenerError) {
-        // Don't let listener errors propagate
-        this.logger.error('Error in error listener:', listenerError);
-      }
-    });
-  }
-
-  /**
-   * Create a safe version of a function that catches and handles errors
+   * Wrap a function to safely handle errors
    * @param {Function} fn - The function to wrap
-   * @param {Object} context - Additional context information
+   * @param {*} fallback - Fallback value to return on error
+   * @param {Function} errorCallback - Callback to receive errors
    * @returns {Function} The wrapped function
    */
-  safeFn(fn, context = {}) {
-    return async (...args) => {
+  wrapSafe(fn, fallback = null, errorCallback) {
+    return function(...args) {
       try {
-        return await fn(...args);
+        const result = fn(...args);
+        
+        // Handle promises
+        if (result && typeof result.then === 'function') {
+          return result.catch(error => {
+            this.handle(error, errorCallback);
+            return fallback;
+          });
+        }
+        
+        return result;
       } catch (error) {
-        return this.handleError(error, {
-          ...context,
-          arguments: args
-        });
+        this.handle(error, errorCallback);
+        return fallback;
       }
-    };
-  }
-
-  /**
-   * Try to execute a function, handling any errors
-   * @param {Function} fn - The function to execute
-   * @param {Object} context - Additional context information
-   * @returns {Object} Result object with success flag and value or error
-   */
-  tryExec(fn, context = {}) {
-    try {
-      const result = fn();
-      return { success: true, value: result };
-    } catch (error) {
-      const handledError = this.handleError(error, context);
-      return { success: false, error: handledError };
-    }
-  }
-
-  /**
-   * Try to execute an async function, handling any errors
-   * @param {Function} fn - The async function to execute
-   * @param {Object} context - Additional context information
-   * @returns {Promise<Object>} Promise resolving to result object with success flag and value or error
-   */
-  async tryExecAsync(fn, context = {}) {
-    try {
-      const result = await fn();
-      return { success: true, value: result };
-    } catch (error) {
-      const handledError = this.handleError(error, context);
-      return { success: false, error: handledError };
-    }
+    }.bind(this);
   }
 
   /**
@@ -210,52 +154,44 @@ class ErrorHandler {
    * @param {Function} fn - The function to retry
    * @param {Object} options - Retry options
    * @param {number} options.maxRetries - Maximum number of retries
-   * @param {number} options.initialDelayMs - Initial delay in milliseconds
-   * @param {number} options.maxDelayMs - Maximum delay in milliseconds
-   * @param {Function} options.shouldRetry - Function to determine if retry should be attempted
+   * @param {number} options.delay - Initial delay in milliseconds
+   * @param {number} options.backoffFactor - Backoff factor for exponential delay
+   * @param {Function} options.retryCondition - Function to determine if retry should be attempted
    * @returns {Function} The retry function
    */
-  retryFn(fn, options = {}) {
+  retry(fn, options = {}) {
     const maxRetries = options.maxRetries || 3;
-    const initialDelayMs = options.initialDelayMs || 1000;
-    const maxDelayMs = options.maxDelayMs || 10000;
-    const shouldRetry = options.shouldRetry || (() => true);
+    const delay = options.delay || 1000;
+    const backoffFactor = options.backoffFactor || 2;
+    const retryCondition = options.retryCondition || (() => true);
     
     return async (...args) => {
       let lastError;
+      let attempt = 0;
       
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      while (attempt <= maxRetries) {
         try {
           return await fn(...args);
         } catch (error) {
           lastError = error;
           
           // Check if we should retry
-          if (attempt >= maxRetries || !shouldRetry(error, attempt)) {
+          if (attempt >= maxRetries || !retryCondition(error)) {
             break;
           }
           
           // Calculate delay with exponential backoff
-          const delay = Math.min(initialDelayMs * Math.pow(2, attempt), maxDelayMs);
-          
-          // Log retry attempt
-          this.logger.warn(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`, {
-            error: error instanceof MarketAdsError ? error.toJSON() : {
-              name: error.name,
-              message: error.message
-            }
-          });
+          const retryDelay = delay * Math.pow(backoffFactor, attempt);
           
           // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          
+          attempt++;
         }
       }
       
       // If we get here, all retries failed
-      return this.handleError(lastError, {
-        retryAttempts: maxRetries,
-        arguments: args
-      });
+      throw lastError;
     };
   }
 
@@ -264,51 +200,47 @@ class ErrorHandler {
    * @param {Function} fn - The function to protect with circuit breaker
    * @param {Object} options - Circuit breaker options
    * @param {number} options.failureThreshold - Number of failures before opening circuit
-   * @param {number} options.resetTimeoutMs - Time in milliseconds before trying to close circuit
-   * @param {Function} options.fallbackFn - Fallback function to call when circuit is open
-   * @returns {Function} The circuit breaker function
+   * @param {number} options.resetTimeout - Time in ms before attempting to close circuit
+   * @param {Function|*} options.fallback - Fallback function or value to use when circuit is open
+   * @returns {Function} The protected function
    */
-  circuitBreaker(fn, options = {}) {
+  withCircuitBreaker(fn, options = {}) {
     const failureThreshold = options.failureThreshold || 5;
-    const resetTimeoutMs = options.resetTimeoutMs || 30000;
-    const fallbackFn = options.fallbackFn;
+    const resetTimeout = options.resetTimeout || 30000;
+    const fallback = options.fallback;
     
+    // Circuit state
     let failures = 0;
     let circuitOpen = false;
-    let lastFailureTime = 0;
+    let lastFailureTime = null;
     
     return async (...args) => {
       // Check if circuit is open
       if (circuitOpen) {
-        // Check if reset timeout has elapsed
+        // Check if we should try to reset (half-open state)
         const now = Date.now();
-        if (now - lastFailureTime >= resetTimeoutMs) {
-          // Try to close circuit (half-open state)
+        if (lastFailureTime && (now - lastFailureTime) > resetTimeout) {
+          // Allow one request through to test the service
           circuitOpen = false;
-          failures = 0;
-        } else if (fallbackFn) {
-          // Use fallback function if available
-          return fallbackFn(...args);
         } else {
-          // Otherwise, throw circuit open error
-          throw new MarketAdsError('Circuit breaker is open', {
+          // Circuit is still open
+          if (typeof fallback === 'function') {
+            return fallback(...args);
+          } else if (fallback !== undefined) {
+            return fallback;
+          }
+          throw new MarketAdsError('Circuit breaker is open - service unavailable', {
             code: 'CIRCUIT_OPEN',
-            component: 'circuit-breaker',
-            context: {
-              failureThreshold,
-              resetTimeoutMs,
-              lastFailureTime,
-              timeSinceLastFailure: now - lastFailureTime
-            }
+            severity: 'ERROR'
           });
         }
       }
       
       try {
-        // Try to execute the function
+        // Call the function
         const result = await fn(...args);
         
-        // Reset failures on success
+        // Success - reset failure count
         failures = 0;
         
         return result;
@@ -317,34 +249,16 @@ class ErrorHandler {
         failures++;
         lastFailureTime = Date.now();
         
-        // Open circuit if threshold is reached
+        // Check if we should open the circuit
         if (failures >= failureThreshold) {
           circuitOpen = true;
-          this.logger.error('Circuit breaker opened', {
-            failures,
-            failureThreshold,
-            resetTimeoutMs
-          });
         }
         
-        // Handle the error
-        return this.handleError(error, {
-          circuitBreakerState: {
-            failures,
-            circuitOpen,
-            failureThreshold
-          },
-          arguments: args
-        });
+        // Re-throw the error
+        throw error;
       }
     };
   }
 }
 
-// Create a default error handler instance
-const defaultErrorHandler = new ErrorHandler();
-
-module.exports = {
-  ErrorHandler,
-  defaultErrorHandler
-}; 
+module.exports = { ErrorHandler }; 
