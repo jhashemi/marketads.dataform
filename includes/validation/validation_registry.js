@@ -378,11 +378,13 @@ class ValidationRegistry {
       
       // Create or merge parameters
       if (!context) context = {};
-      if (!context.parameters) {
-        context.parameters = test.parameters || {};
-      } else {
-        // Merge parameters, giving priority to context params but filling in missing values from test params
-        context.parameters = { ...test.parameters, ...context.parameters };
+      
+      // Ensure context.parameters is initialized
+      context.parameters = context.parameters || {};
+      
+      // Always merge test parameters into context.parameters
+      if (test.parameters) {
+        context.parameters = { ...context.parameters, ...test.parameters };
       }
       
       // Debugging for parameter handling

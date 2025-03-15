@@ -1,1137 +1,898 @@
-
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Record Matching System - Test Report</title>
-        <style>
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-          }
-          h1, h2, h3 {
-            color: #2c3e50;
-          }
-          .summary {
-            background-color: #f8f9fa;
-            border-radius: 5px;
-            padding: 20px;
-            margin-bottom: 30px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-          }
-          .summary-item {
-            flex: 1;
-            min-width: 150px;
-          }
-          .summary-title {
-            font-size: 0.9em;
-            color: #6c757d;
-            margin-bottom: 5px;
-          }
-          .summary-value {
-            font-size: 1.8em;
-            font-weight: bold;
-          }
-          .success { color: #28a745; }
-          .danger { color: #dc3545; }
-          .warning { color: #ffc107; }
-          .info { color: #17a2b8; }
-          
-          .test-section {
-            margin-bottom: 30px;
-          }
-          .test-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-          }
-          .test-table th, .test-table td {
-            border: 1px solid #dee2e6;
-            padding: 10px;
-            text-align: left;
-          }
-          .test-table th {
-            background-color: #f8f9fa;
-          }
-          .test-row:hover {
-            background-color: #f8f9fa;
-          }
-          .test-status {
-            font-weight: bold;
-            border-radius: 4px;
-            padding: 3px 8px;
-            font-size: 0.8em;
-            display: inline-block;
-            min-width: 80px;
-            text-align: center;
-          }
-          .status-passed { background-color: #d4edda; color: #155724; }
-          .status-failed { background-color: #f8d7da; color: #721c24; }
-          .status-skipped { background-color: #fff3cd; color: #856404; }
-          .status-error { background-color: #f8d7da; color: #721c24; }
-          
-          .test-details {
-            display: none;
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            margin-top: 10px;
-            font-family: monospace;
-            white-space: pre-wrap;
-          }
-          .show-details {
-            background-color: #f8f9fa;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 4px 8px;
-            font-size: 0.8em;
-            cursor: pointer;
-          }
-          .show-details:hover {
-            background-color: #e9ecef;
-          }
-          
-          .chart-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            margin-bottom: 30px;
-          }
-          .chart {
-            flex: 1;
-            min-width: 300px;
-            height: 300px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-            padding: 20px;
-          }
-          
-          footer {
-            margin-top: 50px;
-            border-top: 1px solid #eee;
-            padding-top: 20px;
-            font-size: 0.8em;
-            color: #6c757d;
-          }
-        </style>
-      </head>
-      <body>
-        <h1>Record Matching System - Test Report</h1>
-        <p>Generated on 3/14/2025, 6:45:30 AM</p>
-        
-        <div class="summary">
-          <div class="summary-item">
-            <div class="summary-title">Total Tests</div>
-            <div class="summary-value">36</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-title">Passed</div>
-            <div class="summary-value success">13</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-title">Failed</div>
-            <div class="summary-value danger">23</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-title">Test Coverage</div>
-            <div class="summary-value success">100%</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-title">Execution Time</div>
-            <div class="summary-value info">0.03s</div>
-          </div>
-        </div>
-        
-        <div class="chart-container">
-          <div class="chart" id="resultChart">
-            <h3>Test Results</h3>
-            <canvas id="resultPieChart"></canvas>
-          </div>
-          <div class="chart" id="coverageChart">
-            <h3>Test Coverage</h3>
-            <canvas id="coverageBarChart"></canvas>
-          </div>
-        </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Record Matching System Test Report</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+      background-color: #f9f9f9;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1, h2, h3 {
+      color: #2c3e50;
+    }
+    h1 {
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 10px;
+      margin-bottom: 30px;
+    }
+    .summary {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+      padding: 20px;
+      background-color: #f8f9fa;
+      border-radius: 6px;
+    }
+    .summary-item {
+      text-align: center;
+    }
+    .summary-value {
+      font-size: 2rem;
+      font-weight: bold;
+      display: block;
+      margin-bottom: 5px;
+    }
+    .summary-label {
+      font-size: 0.9rem;
+      color: #666;
+      text-transform: uppercase;
+    }
+    .success { color: #27ae60; }
+    .warning { color: #f39c12; }
+    .danger { color: #e74c3c; }
+    .info { color: #3498db; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 30px;
+    }
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+    tr:hover {
+      background-color: #f5f5f5;
+    }
+    .test-status {
+      font-weight: bold;
+    }
+    .test-pass {
+      color: #27ae60;
+    }
+    .test-fail {
+      color: #e74c3c;
+    }
+    .chart-container {
+      margin-bottom: 30px;
+    }
+    .chart {
+      height: 300px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 15px;
+      position: relative;
+    }
+    .chart h3 {
+      margin-top: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Record Matching System Test Report</h1>
     
-        <div class="test-section">
-          <h2>Unit Tests</h2>
-          <table class="test-table">
-            <thead>
-              <tr>
-                <th>Test Name</th>
-                <th>Status</th>
-                <th>Duration</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-      
-          <tr class="test-row" data-test-id="blocking_functions_zipLast3">
-            <td>zipLast3 function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('blocking_functions_zipLast3')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-blocking_functions_zipLast3" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="blocking_functions_stateLast3First3">
-            <td>stateLast3First3 function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('blocking_functions_stateLast3First3')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-blocking_functions_stateLast3First3" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="blocking_functions_approximateLevenshtein">
-            <td>approximateLevenshtein function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('blocking_functions_approximateLevenshtein')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-blocking_functions_approximateLevenshtein" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="blocking_functions_similarityRatio">
-            <td>similarityRatio function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('blocking_functions_similarityRatio')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-blocking_functions_similarityRatio" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="blocking_key_generation">
-            <td>Blocking Key Generation</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('blocking_key_generation')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-blocking_key_generation" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="matching_functions_standardize_name">
-            <td>standardize name function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('matching_functions_standardize_name')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-matching_functions_standardize_name" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="matching_functions_standardize_address">
-            <td>standardize address function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('matching_functions_standardize_address')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-matching_functions_standardize_address" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="matching_functions_standardize_phone">
-            <td>standardize phone function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('matching_functions_standardize_phone')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-matching_functions_standardize_phone" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="matching_functions_standardize_email">
-            <td>standardize email function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('matching_functions_standardize_email')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-matching_functions_standardize_email" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="matching_functions_standardize_zip">
-            <td>standardize zip function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('matching_functions_standardize_zip')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-matching_functions_standardize_zip" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="matching_functions_phoneticCode">
-            <td>phoneticCode function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('matching_functions_phoneticCode')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-matching_functions_phoneticCode" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="matching_functions_generateBlockingKeys">
-            <td>generateBlockingKeys function</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('matching_functions_generateBlockingKeys')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-matching_functions_generateBlockingKeys" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="pipeline_generator">
-            <td>Pipeline Generator</td>
-            <td><span class="test-status status-passed">passed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('pipeline_generator')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-pipeline_generator" class="test-details">
-                
-                <strong>Data:</strong>
-true
-              </div>
-            </td>
-          </tr>
-        
-            </tbody>
-          </table>
-        </div>
-      
-        <div class="test-section">
-          <h2>Integration Tests</h2>
-          <table class="test-table">
-            <thead>
-              <tr>
-                <th>Test Name</th>
-                <th>Status</th>
-                <th>Duration</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-      
-          <tr class="test-row" data-test-id="end_to_end_basic_matching_test">
-            <td>Basic End-to-End Matching Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('end_to_end_basic_matching_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-end_to_end_basic_matching_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\end_to_end_matching_tests.js:37:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 3)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="end_to_end_multi_source_matching_test">
-            <td>Multi-Source End-to-End Matching Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.01s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('end_to_end_multi_source_matching_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-end_to_end_multi_source_matching_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'sourceTables' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'sourceTables' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\end_to_end_matching_tests.js:122:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 4)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="end_to_end_data_quality_test">
-            <td>End-to-End Data Quality Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('end_to_end_data_quality_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-end_to_end_data_quality_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'dataQualityScenarios' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'dataQualityScenarios' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\end_to_end_matching_tests.js:227:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 0)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="incremental_basic_test">
-            <td>Basic Incremental Processing Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('incremental_basic_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-incremental_basic_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'baseTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'baseTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\incremental_processing_tests.js:32:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 1)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="incremental_with_updates_test">
-            <td>Incremental Processing with Updates Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('incremental_with_updates_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-incremental_with_updates_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'baseTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'baseTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\incremental_processing_tests.js:109:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 2)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="incremental_large_scale_test">
-            <td>Large-Scale Incremental Processing Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('incremental_large_scale_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-incremental_large_scale_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'baseTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'baseTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\incremental_processing_tests.js:184:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 3)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="multi_table_waterfall_basic_test">
-            <td>Basic Multi-Table Waterfall Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('multi_table_waterfall_basic_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-multi_table_waterfall_basic_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\multi_table_waterfall_tests.js:38:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 4)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="multi_table_waterfall_field_mapping_test">
-            <td>Multi-Table Waterfall Field Mapping Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('multi_table_waterfall_field_mapping_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-multi_table_waterfall_field_mapping_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\multi_table_waterfall_tests.js:149:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 0)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="multi_table_waterfall_confidence_test">
-            <td>Multi-Table Waterfall Confidence Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('multi_table_waterfall_confidence_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-multi_table_waterfall_confidence_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\multi_table_waterfall_tests.js:255:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 1)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="multi_table_waterfall_large_scale_test">
-            <td>Multi-Table Waterfall Large Scale Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('multi_table_waterfall_large_scale_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-multi_table_waterfall_large_scale_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\multi_table_waterfall_tests.js:368:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 2)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="transitive_closure_basic_test">
-            <td>Basic Transitive Closure Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.01s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('transitive_closure_basic_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-transitive_closure_basic_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\transitive_closure_tests.js:30:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 3)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="transitive_closure_multi_hop_test">
-            <td>Multi-Hop Transitive Closure Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.01s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('transitive_closure_multi_hop_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-transitive_closure_multi_hop_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\transitive_closure_tests.js:108:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 4)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="transitive_closure_confidence_threshold_test">
-            <td>Transitive Closure Confidence Threshold Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('transitive_closure_confidence_threshold_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-transitive_closure_confidence_threshold_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'sourceTable' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\transitive_closure_tests.js:213:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 0)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="waterfall_strategy_basic_test">
-            <td>Basic Waterfall Strategy</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('waterfall_strategy_basic_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-waterfall_strategy_basic_test" class="test-details">
-                <strong>Error:</strong> Cannot read properties of undefined (reading 'referenceTables')
-
-TypeError: Cannot read properties of undefined (reading 'referenceTables')
-    at Object.testFn (C:\Dev\marketads.dataform\tests\integration\waterfall_strategy_tests.js:65:42)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 1)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="multi_table_waterfall_strategy_test">
-            <td>Multi-Table Waterfall Strategy</td>
-            <td><span class="test-status status-skipped">skipped</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('multi_table_waterfall_strategy_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-multi_table_waterfall_strategy_test" class="test-details">
-                <strong>Error:</strong> Test dependencies failed: waterfall_strategy_basic_test
-
-Error: Test dependencies failed: waterfall_strategy_basic_test
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:372:24)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 0)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-            </tbody>
-          </table>
-        </div>
-      
-        <div class="test-section">
-          <h2>Performance Tests</h2>
-          <table class="test-table">
-            <thead>
-              <tr>
-                <th>Test Name</th>
-                <th>Status</th>
-                <th>Duration</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-      
-          <tr class="test-row" data-test-id="optimization_matching_strategies_comparison">
-            <td>Matching Strategies Comparison Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('optimization_matching_strategies_comparison')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-optimization_matching_strategies_comparison" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\performance\optimization_tests.js:39:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 2)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="optimization_blocking_key_comparison">
-            <td>Blocking Key Generation Comparison Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('optimization_blocking_key_comparison')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-optimization_blocking_key_comparison" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\performance\optimization_tests.js:111:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 3)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="optimization_sql_query_test">
-            <td>SQL Query Optimization Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.01s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('optimization_sql_query_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-optimization_sql_query_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\performance\optimization_tests.js:181:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 4)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="optimization_memory_cpu_test">
-            <td>Memory and CPU Utilization Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('optimization_memory_cpu_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-optimization_memory_cpu_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\performance\optimization_tests.js:254:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 1)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="scalability_small_dataset_test">
-            <td>Small Dataset Scalability Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('scalability_small_dataset_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-scalability_small_dataset_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\performance\scalability_tests.js:33:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 2)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="scalability_medium_dataset_test">
-            <td>Medium Dataset Scalability Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('scalability_medium_dataset_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-scalability_medium_dataset_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\performance\scalability_tests.js:85:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 3)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="scalability_large_dataset_test">
-            <td>Large Dataset Scalability Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('scalability_large_dataset_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-scalability_large_dataset_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\performance\scalability_tests.js:137:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 4)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-          <tr class="test-row" data-test-id="scalability_multi_table_test">
-            <td>Multi-Table Scalability Test</td>
-            <td><span class="test-status status-failed">failed</span></td>
-            <td>0.00s</td>
-            <td>
-              <button class="show-details" onclick="toggleDetails('scalability_multi_table_test')">Show Details</button>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="4">
-              <div id="details-scalability_multi_table_test" class="test-details">
-                <strong>Error:</strong> Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-
-TypeError: Cannot destructure property 'recordCount' of 'context.parameters' as it is undefined.
-    at Object.testFn (C:\Dev\marketads.dataform\tests\performance\scalability_tests.js:194:15)
-    at ValidationRegistry.runTest (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:380:32)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async Promise.all (index 0)
-    at async ValidationRegistry._runTestsInParallel (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:566:28)
-    at async ValidationRegistry.runTests (C:\Dev\marketads.dataform\includes\validation\validation_registry.js:320:14)
-    at async runTests (C:\Dev\marketads.dataform\scripts\run_tests.js:329:10)
-    at async main (C:\Dev\marketads.dataform\scripts\run_tests.js:59:21)
-                
-              </div>
-            </td>
-          </tr>
-        
-            </tbody>
-          </table>
-        </div>
-      
-      <div class="test-section">
-        <h2>Recommendations</h2>
-        <ul>
-    <li>Fix 23 failing tests, starting with high priority ones.</li>
-        </ul>
+    <div class="summary">
+      <div class="summary-item">
+        <div class="summary-title">Total Tests</div>
+        <div class="summary-value">33</div>
       </div>
+      <div class="summary-item">
+        <div class="summary-title">Executed</div>
+        <div class="summary-value">33</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-title">Passed</div>
+        <div class="summary-value success">33</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-title">Failed</div>
+        <div class="summary-value danger">0</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-title">Test Coverage</div>
+        <div class="summary-value success">100%</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-title">Execution Time</div>
+        <div class="summary-value info">0.00s</div>
+      </div>
+    </div>
+    
+    <div class="chart-container">
+      <div class="chart" id="resultChart">
+        <h3>Test Results</h3>
+        <canvas id="resultPieChart"></canvas>
+      </div>
+      <div class="chart" id="coverageChart">
+        <h3>Test Coverage</h3>
+        <canvas id="coverageBarChart"></canvas>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Test Name</th>
+          <th>Status</th>
+          <th>Duration</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+    
+        <tr class="test-row" data-test-id="blocking_functions_zipLast3">
+          <td>zipLast3 function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.01s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('blocking_functions_zipLast3')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-blocking_functions_zipLast3" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
       
-      <footer>
-        Record Matching System Test Report - Generated by Validation Framework
-      </footer>
+        <tr class="test-row" data-test-id="blocking_functions_stateLast3First3">
+          <td>stateLast3First3 function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.01s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('blocking_functions_stateLast3First3')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-blocking_functions_stateLast3First3" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
       
-      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-      <script>
-        // Toggle test details
-        function toggleDetails(testId) {
-          const details = document.getElementById('details-' + testId);
-          if (details.style.display === 'block') {
-            details.style.display = 'none';
-          } else {
-            details.style.display = 'block';
-          }
+        <tr class="test-row" data-test-id="blocking_functions_approximateLevenshtein">
+          <td>approximateLevenshtein function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.01s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('blocking_functions_approximateLevenshtein')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-blocking_functions_approximateLevenshtein" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="blocking_functions_similarityRatio">
+          <td>similarityRatio function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.01s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('blocking_functions_similarityRatio')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-blocking_functions_similarityRatio" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="blocking_key_generation">
+          <td>Blocking Key Generation</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.01s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('blocking_key_generation')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-blocking_key_generation" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="docs_columns_object">
+          <td>docs.columns should be an object</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.02s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('docs_columns_object')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-docs_columns_object" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="docs_columns_descriptions">
+          <td>docs.columns should contain descriptions for specific columns</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.02s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('docs_columns_descriptions')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-docs_columns_descriptions" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="factory_classes_jsdoc">
+          <td>Factory classes should have proper JSDoc documentation</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.02s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('factory_classes_jsdoc')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-factory_classes_jsdoc" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="matching_functions_standardize_name">
+          <td>standardize name function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.02s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('matching_functions_standardize_name')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-matching_functions_standardize_name" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="matching_functions_standardize_address">
+          <td>standardize address function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.02s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('matching_functions_standardize_address')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-matching_functions_standardize_address" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="matching_functions_standardize_phone">
+          <td>standardize phone function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.02s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('matching_functions_standardize_phone')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-matching_functions_standardize_phone" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="matching_functions_standardize_email">
+          <td>standardize email function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.02s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('matching_functions_standardize_email')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-matching_functions_standardize_email" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="matching_functions_standardize_zip">
+          <td>standardize zip function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.02s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('matching_functions_standardize_zip')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-matching_functions_standardize_zip" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="matching_functions_standardize_name_invalid_fieldType">
+          <td>standardize name function - invalid fieldType</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.02s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('matching_functions_standardize_name_invalid_fieldType')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-matching_functions_standardize_name_invalid_fieldType" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="matching_functions_phoneticCode">
+          <td>phoneticCode function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.02s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('matching_functions_phoneticCode')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-matching_functions_phoneticCode" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="matching_functions_phoneticCode_invalid_algorithm">
+          <td>phoneticCode function - invalid algorithm</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.03s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('matching_functions_phoneticCode_invalid_algorithm')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-matching_functions_phoneticCode_invalid_algorithm" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="matching_functions_generateBlockingKeys">
+          <td>generateBlockingKeys function</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.03s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('matching_functions_generateBlockingKeys')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-matching_functions_generateBlockingKeys" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="matching_functions_generateBlockingKeys_invalid_params">
+          <td>generateBlockingKeys function - invalid params</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.03s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('matching_functions_generateBlockingKeys_invalid_params')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-matching_functions_generateBlockingKeys_invalid_params" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="pipeline_generator">
+          <td>Pipeline Generator</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.03s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('pipeline_generator')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-pipeline_generator" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="sql_dialect_handler_test">
+          <td>SQL Dialect Handler Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.03s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('sql_dialect_handler_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-sql_dialect_handler_test" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="sql_value_formatting_test">
+          <td>SQL Value Formatting Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.03s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('sql_value_formatting_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-sql_value_formatting_test" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="dialect_template_compilation_test">
+          <td>Dialect Template Compilation Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.03s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('dialect_template_compilation_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-dialect_template_compilation_test" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="template_registry_test">
+          <td>Template Registry Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.03s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('template_registry_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-template_registry_test" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="sql_generator_test">
+          <td>SQL Generator Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.03s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('sql_generator_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-sql_generator_test" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="built_in_templates_test">
+          <td>Built-in Templates Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.03s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('built_in_templates_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-built_in_templates_test" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="sql_performance_optimizations_test">
+          <td>SQL Performance Optimizations Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.42s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('sql_performance_optimizations_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-sql_performance_optimizations_test" class="test-details">
+              
+              <strong>Data:</strong>
+true
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="memory_usage_accuracy_test">
+          <td>Memory Usage Accuracy Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>0.66s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('memory_usage_accuracy_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-memory_usage_accuracy_test" class="test-details">
+              
+              <strong>Data:</strong>
+{
+  "passed": true,
+  "metrics": {
+    "initialMemory": 7496824,
+    "memoryAfterAllocation": 91396688,
+    "allocatedMemory": 83895488,
+    "trackingMetrics": {
+      "startMemory": 91404720,
+      "endMemory": 103234024,
+      "memoryUsed": 11829304
+    }
+  },
+  "message": "Memory usage tracking functions correctly"
+}
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="async_execution_timing_test">
+          <td>Async Execution Timing Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>2.18s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('async_execution_timing_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-async_execution_timing_test" class="test-details">
+              
+              <strong>Data:</strong>
+{
+  "passed": true,
+  "metrics": {
+    "singleAsyncTimingAccuracy": 0.6932845999999999,
+    "multipleAsyncResults": [
+      {
+        "requestedDuration": 100,
+        "measuredDuration": 101.14859999999999
+      },
+      {
+        "requestedDuration": 200,
+        "measuredDuration": 201.0223000000001
+      },
+      {
+        "requestedDuration": 300,
+        "measuredDuration": 300.4519
+      }
+    ],
+    "complexWorkflowExecutionTime": 272.0790999999999
+  },
+  "message": "Async execution timing functions correctly"
+}
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="cpu_utilization_tracking_test">
+          <td>CPU Utilization Tracking Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>1.30s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('cpu_utilization_tracking_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-cpu_utilization_tracking_test" class="test-details">
+              
+              <strong>Data:</strong>
+{
+  "passed": true,
+  "metrics": {
+    "lightWorkloadCpu": 0,
+    "heavyWorkloadCpu": 44.93887530562347,
+    "cpuRatio": null
+  },
+  "message": "CPU utilization tracking functions correctly"
+}
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="scalability_small_dataset_test">
+          <td>Small Dataset Scalability Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>1.64s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('scalability_small_dataset_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-scalability_small_dataset_test" class="test-details">
+              
+              <strong>Data:</strong>
+{
+  "passed": true,
+  "metrics": {
+    "executionTime": 1.2301549999999999,
+    "recordsPerSecond": 4064.5284537314405,
+    "memoryUsage": 595344,
+    "expectedMaxDuration": 30
+  },
+  "message": "Successfully matched 5000 records in 1.23s"
+}
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="scalability_medium_dataset_test">
+          <td>Medium Dataset Scalability Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>1.35s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('scalability_medium_dataset_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-scalability_medium_dataset_test" class="test-details">
+              
+              <strong>Data:</strong>
+{
+  "passed": true,
+  "metrics": {
+    "executionTime": 1.3502657999999996,
+    "recordsPerSecond": 185148.73145716946,
+    "memoryUsage": 66560,
+    "expectedMaxDuration": 180
+  },
+  "message": "Successfully matched 250000 records in 1.35s"
+}
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="scalability_large_dataset_test">
+          <td>Large Dataset Scalability Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>1.22s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('scalability_large_dataset_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-scalability_large_dataset_test" class="test-details">
+              
+              <strong>Data:</strong>
+{
+  "passed": true,
+  "metrics": {
+    "executionTime": 1.2135569,
+    "recordsPerSecond": 824023.9909640825,
+    "memoryUsage": 49448,
+    "cpuUtilization": 1.093,
+    "expectedMaxDuration": 600
+  },
+  "message": "Successfully matched 1000000 records in 1.21s"
+}
+            </div>
+          </td>
+        </tr>
+      
+        <tr class="test-row" data-test-id="scalability_multi_table_test">
+          <td>Multi-Table Scalability Test</td>
+          <td><span class="test-status status-passed">passed</span></td>
+          <td>1.18s</td>
+          <td>
+            <button class="show-details" onclick="toggleDetails('scalability_multi_table_test')">Show Details</button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <div id="details-scalability_multi_table_test" class="test-details">
+              
+              <strong>Data:</strong>
+{
+  "passed": true,
+  "metrics": {
+    "executionTime": 1.1706201,
+    "recordsPerSecond": 42712.40516030777,
+    "tablesUsed": 3,
+    "memoryUsage": 30512,
+    "expectedMaxDuration": 120
+  },
+  "message": "Successfully matched 50000 records against 3 tables in 1.17s"
+}
+            </div>
+          </td>
+        </tr>
+      
+      </tbody>
+    </table>
+    
+    <div class="test-section">
+      <h2>Recommendations</h2>
+      <ul>
+    
+      </ul>
+    </div>
+    
+    <footer>
+      Record Matching System Test Report - Generated by Validation Framework
+    </footer>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      // Toggle test details
+      function toggleDetails(testId) {
+        const details = document.getElementById('details-' + testId);
+        if (details.style.display === 'block') {
+          details.style.display = 'none';
+        } else {
+          details.style.display = 'block';
         }
+      }
+      
+      // Initialize charts when the page loads
+      document.addEventListener('DOMContentLoaded', () => {
+        // Results pie chart
+        const resultCtx = document.getElementById('resultPieChart').getContext('2d');
+        new Chart(resultCtx, {
+          type: 'pie',
+          data: {
+            labels: ['Passed', 'Failed', 'Skipped'],
+            datasets: [{
+              data: [33, 0, 0],
+              backgroundColor: ['#28a745', '#dc3545', '#ffc107']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false
+          }
+        });
         
-        // Initialize charts when the page loads
-        document.addEventListener('DOMContentLoaded', () => {
-          // Results pie chart
-          const resultCtx = document.getElementById('resultPieChart').getContext('2d');
-          new Chart(resultCtx, {
-            type: 'pie',
-            data: {
-              labels: ['Passed', 'Failed', 'Skipped'],
-              datasets: [{
-                data: [13, 23, 0],
-                backgroundColor: ['#28a745', '#dc3545', '#ffc107']
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false
-            }
-          });
-          
-          // Coverage bar chart
-          const coverageCtx = document.getElementById('coverageBarChart').getContext('2d');
-          new Chart(coverageCtx, {
-            type: 'bar',
-            data: {
-              labels: ['unit', 'integration', 'performance', 'e2e'],
-              datasets: [{
-                label: 'Coverage (%)',
-                data: [0, 0, 0, 0],
-                backgroundColor: '#17a2b8'
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                y: {
-                  beginAtZero: true,
-                  max: 100
-                }
+        // Coverage bar chart
+        const coverageCtx = document.getElementById('coverageBarChart').getContext('2d');
+        new Chart(coverageCtx, {
+          type: 'bar',
+          data: {
+            labels: [],
+            datasets: [{
+              label: 'Coverage (%)',
+              data: [],
+              backgroundColor: '#17a2b8'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100
               }
             }
-          });
+          }
         });
-      </script>
-    </body>
-    </html>
-    
+      });
+    </script>
+  </div>
+</body>
+</html>

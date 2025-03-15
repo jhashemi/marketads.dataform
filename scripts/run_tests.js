@@ -63,7 +63,19 @@ async function main() {
     
     // Generate report if requested
     if (args.report) {
-      await generateReport(results, registry.getTestSummary());
+      const testSummary = {
+        total: registry.tests.length,
+        executed: results.length,
+        passed: results.filter(r => r.status === 'passed').length,
+        failed: results.filter(r => r.status === 'failed').length,
+        duration: (new Date() - startTime),
+        coverage: {
+          percentage: Math.round((results.filter(r => r.status === 'passed').length / registry.tests.length) * 100)
+        },
+        byType: {}
+      };
+      
+      await generateReport(results, testSummary);
     }
     
     // Return exit code based on test results
@@ -411,7 +423,7 @@ async function displaySummary(testResults, startTime, validationRegistry) {
 /**
  * Generate test report
  * @param {Array<Object>} results - Test results
- * @param {ValidationRegistry} validationRegistry - Validation registry
+ * @param {Object} validationRegistry - Validation registry or test summary
  */
 async function generateReport(results, validationRegistry) {
   console.log('\nGenerating test report...');
@@ -419,11 +431,16 @@ async function generateReport(results, validationRegistry) {
   // Create report generator
   const reportGenerator = new ReportGenerator();
   
+  // Check if we received a validation registry or a test summary
+  const summary = typeof validationRegistry.getTestSummary === 'function' 
+    ? validationRegistry.getTestSummary() 
+    : validationRegistry;
+  
   // Generate report
   const reportPath = await reportGenerator.generateReport(
     results,
     {
-      total: validationRegistry.getAllTests().length,
+      total: summary.total || results.length,
       executed: results.length,
       passed: results.filter(r => r.status === 'passed').length,
       failed: results.filter(r => r.status === 'failed').length
@@ -434,7 +451,7 @@ async function generateReport(results, validationRegistry) {
   
   // Generate summary file
   await reportGenerator.generateSummaryFile({
-    total: validationRegistry.getAllTests().length,
+    total: summary.total || results.length,
     executed: results.length,
     passed: results.filter(r => r.status === 'passed').length,
     failed: results.filter(r => r.status === 'failed').length
