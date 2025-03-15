@@ -129,7 +129,168 @@ SELECT
 FROM test_transactions t
 JOIN test_sales s ON t.id = s.id;
 
--- Validation
+-- Test Case 4: HyperLogLog++ vs COUNT(DISTINCT) for High Cardinality
+CREATE OR REPLACE TEMPORARY TABLE test_high_cardinality AS
+SELECT 
+  id,
+  CONCAT(
+    'USER_',
+    CAST(1 + CAST(FLOOR(RAND() * 10000000) AS INT64) AS STRING)
+  ) as user_id,
+  CONCAT(
+    'SESSION_',
+    CAST(1 + CAST(FLOOR(RAND() * 1000000) AS INT64) AS STRING)
+  ) as session_id
+FROM test_sales;
+
+-- Red Light Test: Traditional COUNT(DISTINCT)
+CREATE OR REPLACE TEMPORARY TABLE exact_hll_counts AS
+SELECT
+  DATE_TRUNC(sale_date, DAY) as event_date,
+  COUNT(DISTINCT user_id) as exact_users,
+  COUNT(DISTINCT session_id) as exact_sessions,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_high_cardinality),
+    MILLISECOND
+  ) as execution_time_ms
+FROM test_high_cardinality t
+JOIN test_sales s ON t.id = s.id
+GROUP BY event_date;
+
+-- Green Light Test: HLL++ Optimization
+CREATE OR REPLACE TEMPORARY TABLE hll_counts AS
+SELECT
+  DATE_TRUNC(sale_date, DAY) as event_date,
+  HLL_COUNT.INIT(user_id) as hll_users,
+  HLL_COUNT.INIT(session_id) as hll_sessions,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_high_cardinality),
+    MILLISECOND
+  ) as execution_time_ms
+FROM test_high_cardinality t
+JOIN test_sales s ON t.id = s.id
+GROUP BY event_date;
+
+-- Test Case 5: Window Function Optimization
+CREATE OR REPLACE TEMPORARY TABLE test_window_data AS
+SELECT 
+  id,
+  sales_amount,
+  CONCAT('REGION_', CAST(1 + MOD(id, 10) AS STRING)) as region,
+  sale_date
+FROM test_sales;
+
+-- Red Light Test: Traditional Window Functions
+CREATE OR REPLACE TEMPORARY TABLE traditional_window_results AS
+SELECT
+  id,
+  region,
+  sales_amount,
+  AVG(sales_amount) OVER (
+    PARTITION BY region 
+    ORDER BY sale_date 
+    ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+  ) as moving_avg,
+  RANK() OVER (
+    PARTITION BY region 
+    ORDER BY sales_amount DESC
+  ) as sales_rank,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_window_data),
+    MILLISECOND
+  ) as execution_time_ms
+FROM test_window_data;
+
+-- Green Light Test: Optimized Window Functions with Pre-aggregation
+CREATE OR REPLACE TEMPORARY TABLE optimized_window_results AS
+WITH pre_aggregated AS (
+  SELECT
+    region,
+    sale_date,
+    AVG(sales_amount) as daily_avg,
+    MAX(sales_amount) as daily_max
+  FROM test_window_data
+  GROUP BY region, sale_date
+)
+SELECT
+  w.id,
+  w.region,
+  w.sales_amount,
+  AVG(p.daily_avg) OVER (
+    PARTITION BY w.region 
+    ORDER BY w.sale_date 
+    ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+  ) as moving_avg,
+  RANK() OVER (
+    PARTITION BY w.region 
+    ORDER BY w.sales_amount DESC
+  ) as sales_rank,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_window_data),
+    MILLISECOND
+  ) as execution_time_ms
+FROM test_window_data w
+LEFT JOIN pre_aggregated p 
+  ON w.region = p.region 
+  AND w.sale_date = p.sale_date;
+
+-- Test Case 6: Partitioned Aggregation Optimization
+CREATE OR REPLACE TEMPORARY TABLE test_partitioned_data AS
+SELECT 
+  *,
+  DATETIME(sale_date) as sale_datetime,
+  CONCAT('CATEGORY_', CAST(1 + MOD(id, 100) AS STRING)) as category
+FROM test_window_data;
+
+-- Red Light Test: Traditional Aggregation
+CREATE OR REPLACE TEMPORARY TABLE traditional_agg_results AS
+SELECT
+  sale_date,
+  region,
+  category,
+  COUNT(*) as transaction_count,
+  SUM(sales_amount) as total_sales,
+  AVG(sales_amount) as avg_sale,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_partitioned_data),
+    MILLISECOND
+  ) as execution_time_ms
+FROM test_partitioned_data
+GROUP BY sale_date, region, category;
+
+-- Green Light Test: Optimized Partitioned Aggregation
+CREATE OR REPLACE TEMPORARY TABLE optimized_agg_results AS
+WITH hourly_aggs AS (
+  SELECT
+    DATE(sale_datetime) as sale_date,
+    region,
+    category,
+    COUNT(*) as transaction_count,
+    SUM(sales_amount) as total_sales
+  FROM test_partitioned_data
+  GROUP BY DATE(sale_datetime), region, category
+)
+SELECT
+  sale_date,
+  region,
+  category,
+  SUM(transaction_count) as transaction_count,
+  SUM(total_sales) as total_sales,
+  SUM(total_sales) / SUM(transaction_count) as avg_sale,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_partitioned_data),
+    MILLISECOND
+  ) as execution_time_ms
+FROM hourly_aggs
+GROUP BY sale_date, region, category;
+
+-- Extended Validation
 WITH performance_metrics AS (
   SELECT
     'NTILE vs APPROX_QUANTILES' as test_case,
@@ -145,6 +306,21 @@ WITH performance_metrics AS (
     'STRING vs INT64 JOIN',
     (SELECT AVG(execution_time_ms) FROM string_join_results),
     (SELECT AVG(execution_time_ms) FROM int64_join_results)
+  UNION ALL
+  SELECT
+    'HLL++ vs COUNT(DISTINCT)',
+    (SELECT AVG(execution_time_ms) FROM exact_hll_counts),
+    (SELECT AVG(execution_time_ms) FROM hll_counts)
+  UNION ALL
+  SELECT
+    'Window Functions',
+    (SELECT AVG(execution_time_ms) FROM traditional_window_results),
+    (SELECT AVG(execution_time_ms) FROM optimized_window_results)
+  UNION ALL
+  SELECT
+    'Partitioned Aggregation',
+    (SELECT AVG(execution_time_ms) FROM traditional_agg_results),
+    (SELECT AVG(execution_time_ms) FROM optimized_agg_results)
 ),
 accuracy_metrics AS (
   SELECT
@@ -153,6 +329,27 @@ accuracy_metrics AS (
       (SELECT SUM(exact_customer_count) FROM exact_counts) - 
       (SELECT SUM(approx_customer_count) FROM approx_counts)
     ) / (SELECT SUM(exact_customer_count) FROM exact_counts) as error_rate
+  UNION ALL
+  SELECT
+    'HLL++ Accuracy' as metric,
+    ABS(
+      (SELECT SUM(exact_users) FROM exact_hll_counts) - 
+      (SELECT SUM(HLL_COUNT.EXTRACT(hll_users)) FROM hll_counts)
+    ) / (SELECT SUM(exact_users) FROM exact_hll_counts) as error_rate
+  UNION ALL
+  SELECT
+    'Window Function Accuracy',
+    ABS(
+      (SELECT AVG(moving_avg) FROM traditional_window_results) -
+      (SELECT AVG(moving_avg) FROM optimized_window_results)
+    ) / (SELECT AVG(moving_avg) FROM traditional_window_results) as error_rate
+  UNION ALL
+  SELECT
+    'Aggregation Accuracy',
+    ABS(
+      (SELECT AVG(avg_sale) FROM traditional_agg_results) -
+      (SELECT AVG(avg_sale) FROM optimized_agg_results)
+    ) / (SELECT AVG(avg_sale) FROM traditional_agg_results) as error_rate
 )
 SELECT
   CASE
