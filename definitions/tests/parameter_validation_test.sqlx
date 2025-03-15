@@ -1,0 +1,147 @@
+config {
+  type: "test",
+  tags: ["unit", "validation"],
+  description: "Tests for parameter validation utilities"
+}
+
+-- Create test tables
+CREATE OR REPLACE TABLE ${ref("test_source")} AS
+SELECT 1 as source_id, 'test@example.com' as email;
+
+CREATE OR REPLACE TABLE ${ref("test_reference")} AS
+SELECT 1 as ref_id, 'test@example.com' as email_address;
+
+-- Import validation utilities
+js {
+  const { validateMatchingParameters } = require('../utils/parameter_validation');
+}
+
+-- Test required parameters
+WITH validation_test_1 AS (
+  SELECT
+    ${validateMatchingParameters({
+      // Missing required parameters
+    }).isValid} as should_be_false,
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output'
+    }).isValid} as should_be_true
+)
+SELECT
+  ASSERT_FALSE(should_be_false, 'Should fail with missing parameters'),
+  ASSERT_TRUE(should_be_true, 'Should pass with required parameters')
+FROM validation_test_1;
+
+-- Test table existence validation
+WITH validation_test_2 AS (
+  SELECT
+    ${validateMatchingParameters({
+      sourceTable: 'nonexistent_table',
+      outputTable: 'test_output'
+    }).errors.length > 0} as should_have_errors,
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output'
+    }).errors.length} as should_be_zero
+)
+SELECT
+  ASSERT_TRUE(should_have_errors, 'Should detect nonexistent table'),
+  ASSERT_EQUALS(should_be_zero, 0, 'Should have no errors for existing table')
+FROM validation_test_2;
+
+-- Test field mapping validation
+WITH validation_test_3 AS (
+  SELECT
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output',
+      fieldMappings: {
+        nonexistent_field: 'email'
+      }
+    }).errors.length > 0} as should_have_errors,
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output',
+      fieldMappings: {
+        source_id: 'ref_id',
+        email: 'email_address'
+      }
+    }).errors.length} as should_be_zero
+)
+SELECT
+  ASSERT_TRUE(should_have_errors, 'Should detect invalid field mapping'),
+  ASSERT_EQUALS(should_be_zero, 0, 'Should accept valid field mapping')
+FROM validation_test_3;
+
+-- Test threshold validation
+WITH validation_test_4 AS (
+  SELECT
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output',
+      confidenceThreshold: 1.5
+    }).errors.length > 0} as should_have_errors,
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output',
+      confidenceThreshold: 0.8
+    }).errors.length} as should_be_zero
+)
+SELECT
+  ASSERT_TRUE(should_have_errors, 'Should detect invalid threshold'),
+  ASSERT_EQUALS(should_be_zero, 0, 'Should accept valid threshold')
+FROM validation_test_4;
+
+-- Test priority validation
+WITH validation_test_5 AS (
+  SELECT
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output',
+      referenceTables: [
+        { name: 'test_ref1', priority: 1 },
+        { name: 'test_ref2', priority: 1 }
+      ]
+    }).errors.length > 0} as should_have_errors,
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output',
+      referenceTables: [
+        { name: 'test_ref1', priority: 1 },
+        { name: 'test_ref2', priority: 2 }
+      ]
+    }).errors.length} as should_be_zero
+)
+SELECT
+  ASSERT_TRUE(should_have_errors, 'Should detect duplicate priorities'),
+  ASSERT_EQUALS(should_be_zero, 0, 'Should accept unique priorities')
+FROM validation_test_5;
+
+-- Test depth validation
+WITH validation_test_6 AS (
+  SELECT
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output',
+      maxDepth: 0
+    }).errors.length > 0} as should_have_errors,
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output',
+      maxDepth: 6
+    }).warnings.length > 0} as should_have_warnings,
+    ${validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output',
+      maxDepth: 3
+    }).errors.length + validateMatchingParameters({
+      sourceTable: 'test_source',
+      outputTable: 'test_output',
+      maxDepth: 3
+    }).warnings.length} as should_be_zero
+)
+SELECT
+  ASSERT_TRUE(should_have_errors, 'Should detect invalid depth'),
+  ASSERT_TRUE(should_have_warnings, 'Should warn about high depth'),
+  ASSERT_EQUALS(should_be_zero, 0, 'Should accept valid depth')
+FROM validation_test_6; 

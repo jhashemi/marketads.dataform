@@ -1,0 +1,90 @@
+config {
+  type: "table",
+  description: "Implements transitive closure matching strategy",
+  columns: {
+    cluster_id: "Unique identifier for the cluster",
+    cluster_members: "Array of member IDs in the cluster",
+    cluster_size: "Number of members in the cluster",
+    avg_confidence: "Average confidence score of direct matches in cluster",
+    direct_edges: "Number of direct matches in cluster",
+    transitive_edges: "Number of transitive matches in cluster"
+  }
+}
+
+js {
+  const generateTransitiveClosureSQL = (params) => {
+    const {
+      matchesTable,
+      confidenceThreshold = 0.8,
+      maxDepth = 3
+    } = params;
+
+    return `
+      WITH RECURSIVE
+      -- Filter matches above confidence threshold
+      filtered_matches AS (
+        SELECT 
+          source_id as id1,
+          ref_id as id2,
+          confidence
+        FROM \`${matchesTable}\`
+        WHERE confidence >= ${confidenceThreshold}
+      ),
+
+      -- Generate all possible paths up to max_depth
+      paths AS (
+        -- Base case: direct matches
+        SELECT
+          id1,
+          id2,
+          confidence,
+          1 as path_length,
+          ARRAY_AGG(STRUCT(id1, id2, confidence)) as edges
+        FROM filtered_matches
+        GROUP BY id1, id2, confidence
+
+        UNION ALL
+
+        -- Recursive case: extend paths
+        SELECT
+          p.id1,
+          m.id2,
+          LEAST(p.confidence, m.confidence) as confidence,
+          p.path_length + 1 as path_length,
+          ARRAY_CONCAT(p.edges, ARRAY_AGG(STRUCT(m.id1, m.id2, m.confidence)))
+        FROM paths p
+        JOIN filtered_matches m ON p.id2 = m.id1
+        WHERE p.path_length < ${maxDepth}
+        GROUP BY p.id1, m.id2, p.confidence, p.path_length, p.edges
+      ),
+
+      -- Find connected components (clusters)
+      clusters AS (
+        SELECT
+          MIN(id1) as cluster_id,
+          ARRAY_AGG(DISTINCT id1) as members1,
+          ARRAY_AGG(DISTINCT id2) as members2,
+          COUNT(DISTINCT STRUCT(id1, id2)) as direct_edges,
+          COUNT(DISTINCT CASE WHEN path_length > 1 THEN STRUCT(id1, id2) END) as transitive_edges,
+          AVG(CASE WHEN path_length = 1 THEN confidence END) as avg_confidence
+        FROM paths
+        GROUP BY LEAST(id1, id2)
+      )
+
+      -- Final output with cluster metrics
+      SELECT
+        cluster_id,
+        ARRAY_CONCAT(members1, members2) as cluster_members,
+        ARRAY_LENGTH(ARRAY_CONCAT(members1, members2)) as cluster_size,
+        avg_confidence,
+        direct_edges,
+        transitive_edges
+      FROM clusters
+      WHERE cluster_size > 1
+      ORDER BY cluster_size DESC, avg_confidence DESC
+    `;
+  };
+}
+
+-- Execute transitive closure with parameters
+${generateTransitiveClosureSQL(params)} 

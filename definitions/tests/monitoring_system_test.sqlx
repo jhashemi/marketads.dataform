@@ -1,0 +1,187 @@
+config {
+  type: "test",
+  tags: ["unit", "monitoring"],
+  description: "Tests for the monitoring system",
+  dependencies: ["monitoring/monitoring_system"]
+}
+
+-- Test 1: Verify metrics recording
+WITH test_metrics AS (
+  SELECT
+    CURRENT_TIMESTAMP() as timestamp,
+    'test_strategy' as strategy,
+    'test_op_1' as operation_id,
+    1000 as data_size,
+    5000 as duration_ms,
+    512.5 as memory_usage_mb,
+    75.5 as cpu_usage_percent,
+    1000 as io_operations,
+    1048576 as bytes_processed,
+    1000 as rows_processed,
+    5 as error_count,
+    'completed' as status
+),
+metrics_test AS (
+  ${createMonitoringSystem().recordMetrics({
+    strategy: 'test_strategy',
+    operationId: 'test_op_1',
+    dataSize: 1000,
+    duration: 5000,
+    memory: { used: 512.5 },
+    cpu: { percentage: 75.5 },
+    io: { operations: 1000 },
+    bytesProcessed: 1048576,
+    rowsProcessed: 1000,
+    errorCount: 5,
+    status: 'completed'
+  })}
+  
+  SELECT COUNT(*) as record_count
+  FROM ${ref("matching_metrics")}
+  WHERE operation_id = 'test_op_1'
+)
+SELECT
+  CASE 
+    WHEN record_count = 1 THEN 'PASS: Metrics recorded successfully'
+    ELSE 'FAIL: Expected 1 record, got ' || CAST(record_count AS STRING)
+  END as test_result
+FROM metrics_test;
+
+-- Test 2: Verify alert generation for high memory usage
+WITH high_memory_metrics AS (
+  ${createMonitoringSystem().recordMetrics({
+    strategy: 'test_strategy',
+    operationId: 'test_op_2',
+    dataSize: 1000,
+    duration: 5000,
+    memory: { used: 900 }, -- 90% memory usage should trigger alert
+    cpu: { percentage: 50 },
+    io: { operations: 1000 },
+    bytesProcessed: 1048576,
+    rowsProcessed: 1000,
+    errorCount: 0,
+    status: 'completed'
+  })}
+),
+alert_check AS (
+  ${createMonitoringSystem().checkThresholds()}
+  
+  SELECT COUNT(*) as alert_count
+  FROM ${ref("matching_alerts")}
+  WHERE alert_type = 'memory_usage'
+  AND operation_id = 'test_op_2'
+)
+SELECT
+  CASE 
+    WHEN alert_count > 0 THEN 'PASS: Memory alert generated successfully'
+    ELSE 'FAIL: No memory alert generated'
+  END as test_result
+FROM alert_check;
+
+-- Test 3: Verify alert generation for high CPU usage
+WITH high_cpu_metrics AS (
+  ${createMonitoringSystem().recordMetrics({
+    strategy: 'test_strategy',
+    operationId: 'test_op_3',
+    dataSize: 1000,
+    duration: 5000,
+    memory: { used: 500 },
+    cpu: { percentage: 95 }, -- 95% CPU usage should trigger alert
+    io: { operations: 1000 },
+    bytesProcessed: 1048576,
+    rowsProcessed: 1000,
+    errorCount: 0,
+    status: 'completed'
+  })}
+),
+alert_check AS (
+  ${createMonitoringSystem().checkThresholds()}
+  
+  SELECT COUNT(*) as alert_count
+  FROM ${ref("matching_alerts")}
+  WHERE alert_type = 'cpu_usage'
+  AND operation_id = 'test_op_3'
+)
+SELECT
+  CASE 
+    WHEN alert_count > 0 THEN 'PASS: CPU alert generated successfully'
+    ELSE 'FAIL: No CPU alert generated'
+  END as test_result
+FROM alert_check;
+
+-- Test 4: Verify alert generation for high error rate
+WITH high_error_metrics AS (
+  ${createMonitoringSystem().recordMetrics({
+    strategy: 'test_strategy',
+    operationId: 'test_op_4',
+    dataSize: 1000,
+    duration: 5000,
+    memory: { used: 500 },
+    cpu: { percentage: 50 },
+    io: { operations: 1000 },
+    bytesProcessed: 1048576,
+    rowsProcessed: 1000,
+    errorCount: 20, -- 2% error rate should trigger alert
+    status: 'completed'
+  })}
+),
+alert_check AS (
+  ${createMonitoringSystem().checkThresholds()}
+  
+  SELECT COUNT(*) as alert_count
+  FROM ${ref("matching_alerts")}
+  WHERE alert_type = 'error_rate'
+  AND operation_id = 'test_op_4'
+)
+SELECT
+  CASE 
+    WHEN alert_count > 0 THEN 'PASS: Error rate alert generated successfully'
+    ELSE 'FAIL: No error rate alert generated'
+  END as test_result
+FROM alert_check;
+
+-- Test 5: Verify alert generation for long duration
+WITH baseline_metrics AS (
+  ${createMonitoringSystem().recordMetrics({
+    strategy: 'test_strategy',
+    operationId: 'test_op_5_baseline',
+    dataSize: 1000,
+    duration: 5000, -- baseline duration
+    memory: { used: 500 },
+    cpu: { percentage: 50 },
+    io: { operations: 1000 },
+    bytesProcessed: 1048576,
+    rowsProcessed: 1000,
+    errorCount: 0,
+    status: 'completed'
+  })}
+),
+slow_operation_metrics AS (
+  ${createMonitoringSystem().recordMetrics({
+    strategy: 'test_strategy',
+    operationId: 'test_op_5',
+    dataSize: 1000,
+    duration: 15000, -- 3x baseline duration should trigger alert
+    memory: { used: 500 },
+    cpu: { percentage: 50 },
+    io: { operations: 1000 },
+    bytesProcessed: 1048576,
+    rowsProcessed: 1000,
+    errorCount: 0,
+    status: 'completed'
+  })}
+),
+alert_check AS (
+  ${createMonitoringSystem().checkThresholds()}
+  
+  SELECT COUNT(*) as alert_count
+  FROM ${ref("matching_alerts")}
+  WHERE alert_type = 'duration'
+  AND operation_id = 'test_op_5'
+)
+SELECT
+  CASE 
+    WHEN alert_count > 0 THEN 'PASS: Duration alert generated successfully'
+    ELSE 'FAIL: No duration alert generated'
+  END as test_result
+FROM alert_check; 

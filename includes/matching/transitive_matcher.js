@@ -73,23 +73,35 @@ class TransitiveMatcher {
     console.log('Running transitive matching and clustering...');
     
     const startTime = Date.now();
+
+    // Use dataform.ref to reference the SQLX implementation
+    const transitiveClosureTable = dataform.ref("matching/transitive_closure");
     
-    // 1. Fetch matches from matchResultsTable
-    const matches = await this.fetchMatchResults();
-    
-    // 2. Find connected components (clusters)
-    const clusters = this.findConnectedComponents(matches);
-    
-    // 3. Generate metrics
-    const metrics = this.generateMetrics(clusters, matches);
-    const executionTime = (Date.now() - startTime) / 1000;
-    
-    return {
-      clusters: clusters,
-      metrics: metrics,
-      executionTime: executionTime,
-      sql: this.generateSql() // Include SQL for debugging
-    };
+    try {
+      // Execute the SQLX implementation
+      await transitiveClosureTable.execute({
+        matchesTable: this.matchResultsTable,
+        sourceIdField: this.sourceIdField,
+        targetIdField: this.targetIdField,
+        confidenceField: this.confidenceField,
+        confidenceThreshold: this.confidenceThreshold,
+        maxDepth: this.maxDepth
+      });
+
+      // Get metrics from the results
+      const metrics = await this.getClusterMetrics(transitiveClosureTable);
+      
+      const executionTime = (Date.now() - startTime) / 1000;
+      
+      return {
+        outputTable: transitiveClosureTable,
+        metrics: metrics,
+        executionTime: executionTime
+      };
+    } catch (error) {
+      console.error('Error executing transitive closure:', error);
+      throw new Error(`Transitive closure execution failed: ${error.message}`);
+    }
   }
   
   /**
@@ -445,43 +457,62 @@ class TransitiveMatcher {
   
   /**
    * Gets comprehensive cluster metrics for analysis
+   * @param {string} transitiveClosureTable - Name of the transitive closure results table
    * @returns {Object} Detailed cluster metrics
    */
-  async getClusterMetrics() {
-    // Generate test data for simulation
-    const testMatches = this.simulateMatchResults();
-    
-    // Generate real metrics based on clusters produced by transitive closure
-    const closureResults = this.simulateTransitiveClosure(testMatches, {
-      maxDepth: this.maxDepth,
-      confidenceThreshold: this.confidenceThreshold
+  async getClusterMetrics(transitiveClosureTable) {
+    const metricsQuery = `
+      SELECT
+        COUNT(*) as cluster_count,
+        SUM(cluster_size) as total_records,
+        AVG(cluster_size) as avg_cluster_size,
+        MAX(cluster_size) as largest_cluster_size,
+        AVG(avg_confidence) as avg_confidence,
+        SUM(direct_edges) as total_direct_edges,
+        SUM(transitive_edges) as total_transitive_edges,
+        -- Calculate transitivity score
+        SAFE_DIVIDE(
+          SUM(direct_edges),
+          SUM(direct_edges) + SUM(transitive_edges)
+        ) as transitivity_score,
+        -- Get cluster size distribution
+        ARRAY_AGG(STRUCT(
+          cluster_size,
+          COUNT(*) as count
+        ) ORDER BY cluster_size) as size_distribution
+      FROM ${transitiveClosureTable}
+    `;
+
+    const [results] = await dataform.query(metricsQuery);
+    const metrics = results[0];
+
+    // Format size distribution
+    const distribution = {};
+    const percentages = {};
+    const totalClusters = metrics.cluster_count;
+
+    metrics.size_distribution.forEach(({cluster_size, count}) => {
+      distribution[cluster_size] = count;
+      percentages[cluster_size] = ((count / totalClusters) * 100).toFixed(2) + '%';
     });
-    
-    // Extract clusters from the results
-    const clusters = closureResults.clusters || [];
-    
-    // Generate metrics
-    const metrics = this.generateMetrics(clusters, testMatches);
-    
+
     return {
-      clusterCount: metrics.totalClusters || 0,
-      recordsInClusters: metrics.totalRecordsInClusters || 0,
-      averageClusterSize: metrics.averageClusterSize ? metrics.averageClusterSize.toFixed(2) : '0.00',
-      largestClusterSize: metrics.largestClusterSize || 0,
-      transitivityScore: metrics.transitivityScore ? metrics.transitivityScore.toFixed(2) : '0.00',
-      clusterSizeDistribution: metrics.clusterSizeDistribution || { counts: {}, percentages: {} },
-      
-      // Additional metrics for analysis
-      edgeMetrics: {
-        directEdges: metrics.totalDirectEdges || 0,
-        transitiveEdges: metrics.totalTransitiveEdges || 0,
-        avgConfidence: metrics.averageAverageConfidence ? metrics.averageAverageConfidence.toFixed(2) : '0.00',
+      clusterCount: metrics.cluster_count,
+      recordsInClusters: metrics.total_records,
+      averageClusterSize: metrics.avg_cluster_size.toFixed(2),
+      largestClusterSize: metrics.largest_cluster_size,
+      transitivityScore: metrics.transitivity_score.toFixed(2),
+      clusterSizeDistribution: {
+        counts: distribution,
+        percentages: percentages
       },
-      
-      // Performance metrics
+      edgeMetrics: {
+        directEdges: metrics.total_direct_edges,
+        transitiveEdges: metrics.total_transitive_edges,
+        avgConfidence: metrics.avg_confidence.toFixed(2)
+      },
       performanceMetrics: {
-        memoryUsage: process.memoryUsage ? process.memoryUsage().heapUsed / 1024 / 1024 : 0,
-        executionTime: closureResults.executionTime || 0,
+        executionTime: metrics.execution_time || 0
       }
     };
   }

@@ -1,0 +1,108 @@
+config {
+  type: "table",
+  description: "Implements multi-table waterfall matching strategy",
+  columns: {
+    source_id: "ID from source table",
+    ref_id: "ID from reference table",
+    customer_id: "Customer ID from matched reference record",
+    source: "Source system identifier",
+    confidence: "Match confidence score",
+    match_rank: "Rank of match within priority group",
+    priority: "Priority level of the match"
+  }
+}
+
+js {
+  const generateWaterfallSQL = (params) => {
+    const {
+      sourceTable,
+      referenceTables,
+      outputTable
+    } = params;
+
+    // Validate and sort reference tables by priority
+    const sortedTables = referenceTables.sort((a, b) => a.priority - b.priority);
+
+    // Generate field mapping expressions
+    const generateMappingExpr = (mappings, tableAlias) => {
+      return Object.entries(mappings).map(([source, target]) => 
+        `${tableAlias}.${source} = ref.${target}`
+      ).join(' AND ');
+    };
+
+    // Generate match conditions for each reference table
+    const generateMatchCTE = (refTable, index) => {
+      const tableAlias = `m${index}`;
+      const mappingExpr = generateMappingExpr(refTable.fieldMappings, 'src');
+      const requiredFields = refTable.requiredFields || [];
+      const confidenceMultiplier = refTable.confidenceMultiplier || 1.0;
+
+      return `
+        matches_${index} AS (
+          SELECT
+            src.source_id,
+            ref.ref_id,
+            ref.customer_id,
+            ref.source,
+            (CASE
+              WHEN ${mappingExpr} THEN ${confidenceMultiplier}
+              ELSE 0
+            END) as confidence,
+            ROW_NUMBER() OVER (
+              PARTITION BY src.source_id
+              ORDER BY confidence DESC
+            ) as match_rank,
+            ${refTable.priority} as priority
+          FROM \`${sourceTable}\` src
+          CROSS JOIN \`${refTable.name}\` ref
+          WHERE ${mappingExpr}
+          ${requiredFields.length > 0 ? 
+            `AND ${requiredFields.map(f => `ref.${f} IS NOT NULL`).join(' AND ')}` 
+            : ''}
+        )`;
+    };
+
+    // Generate SQL for all reference tables
+    const matchCTEs = sortedTables.map((table, index) => 
+      generateMatchCTE(table, index)
+    ).join(',\n');
+
+    return `
+      WITH ${matchCTEs},
+      
+      -- Combine all matches
+      all_matches AS (
+        ${sortedTables.map((_, index) => `
+          SELECT * FROM matches_${index}
+          ${index < sortedTables.length - 1 ? 'UNION ALL' : ''}
+        `).join('\n')}
+      ),
+      
+      -- Select best matches by priority
+      ranked_matches AS (
+        SELECT *,
+          ROW_NUMBER() OVER (
+            PARTITION BY source_id
+            ORDER BY priority ASC, confidence DESC, match_rank ASC
+          ) as priority_rank
+        FROM all_matches
+      )
+      
+      -- Final output
+      SELECT
+        source_id,
+        ref_id,
+        customer_id,
+        source,
+        confidence,
+        match_rank,
+        priority
+      FROM ranked_matches
+      WHERE priority_rank = 1
+      ORDER BY source_id, priority, confidence DESC
+    `;
+  };
+}
+
+-- Execute waterfall matching with parameters
+${generateWaterfallSQL(params)} 

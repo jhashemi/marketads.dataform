@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document provides a comprehensive plan for completing the MarketAds Dataform project implementation, with a focus on the Class-Based Factory Pattern integration and test infrastructure. It outlines the current status, completed items, and remaining tasks with clear steps for completion using a Test-Driven Development (TDD) approach.
+This document provides a comprehensive plan for completing the MarketAds Dataform project implementation, with a focus on the Class-Based Factory Pattern integration, API implementation, and test infrastructure. It follows a strict Test-Driven Development (TDD) approach with RED-GREEN-REFACTOR phases for each component.
 
 ## Project Overview
 
@@ -12,6 +12,8 @@ graph TD
     A --> C[Factory Classes]
     A --> D[Test Infrastructure]
     A --> E[Documentation]
+    A --> F[Monitoring System]
+    A --> G[API Layer]
     
     B --> B1[MatchingSystem]
     B --> B2[HistoricalMatcher]
@@ -30,535 +32,291 @@ graph TD
     E --> E1[Class-Based Factory Pattern Docs]
     E --> E2[Migration Guide]
     E --> E3[Knowledge Graph]
-```
-
-## Current Status
-
-The project has successfully implemented the Class-Based Factory Pattern with core classes and factories. The basic factory pattern test is passing, indicating that the foundation is solid. However, several integration tests are failing due to missing functionality and improper test configurations. The TransitiveMatcher class exists but requires implementation of key methods, and the performance utilities need completion.
-
-### Test Status Summary
-
-```mermaid
-pie title Test Status
-    "Passing" : 19
-    "Failing" : 17
-    "Not Implemented" : 7
-```
-
-## Completed Items
-
-1. **Core Classes Implementation**: 
-   - ✅ `MatchingSystem` class (`includes/matching_system.js`)
-   - ✅ `HistoricalMatcher` class (`includes/historical_matcher.js`)
-   - ✅ Basic structure of `TransitiveMatcher` class (`includes/matching/transitive_matcher.js`)
-   - All core classes follow the structure outlined in [CLASS_BASED_FACTORY_PATTERN.md](docs/CLASS_BASED_FACTORY_PATTERN.md)
-
-2. **Factory Classes Implementation**:
-   - ✅ `MatchingSystemFactory` for creating `MatchingSystem` instances
-   - ✅ `HistoricalMatcherFactory` for creating `HistoricalMatcher` instances
-   - ✅ `MatchStrategyFactory` for creating strategy objects
-   - ✅ `TransitiveMatcherFactory` for creating `TransitiveMatcher` instances
-
-3. **Test Infrastructure**:
-   - ✅ Updated `run_tests.js` to support class-based factory pattern
-   - ✅ Implemented `ensureClassBasedFactoryPattern()` function for global initialization
-   - ✅ Created test helper functions in `includes/validation/test_helpers.js`
-   - ✅ Factory pattern test (`tests/integration/factory_pattern_test.js`) is passing
-   - ✅ Created comprehensive transitive closure tests (`tests/integration/transitive_closure_tests.js`)
-
-4. **Utilities**:
-   - ✅ Created basic performance utilities (`includes/utils/performance_utils.js`)
-   - ✅ Implemented `getCurrentTimeMs()` and `measureExecutionTime()` functions
-   - ✅ Implemented `getCurrentMemoryUsage()` with environment detection
-   - ✅ Implemented `measureAsyncExecutionTime(asyncFn)` for async functions
-   - ✅ Implemented `trackPerformance(fn, options)` for comprehensive metrics
-   - ✅ Implemented `trackCpuUtilization(fn, options)` for CPU usage tracking
-
-5. **Documentation**:
-   - ✅ Created comprehensive documentation in `docs/CLASS_BASED_FACTORY_PATTERN.md`
-   - ✅ Added migration guide for existing code
-   - ✅ Updated knowledge graph with new components and relationships
-
-## Remaining Items with TDD Workflow
-
-### 1. Complete TransitiveMatcher Implementation
-
-#### TDD Process:
-1. **Write/Update Tests**: (✅ Already complete)
-   - `tests/integration/transitive_closure_tests.js` has comprehensive test cases
-   
-2. **Implement TransitiveMatcher Methods** (Priority: High)
-   - ✅ Complete the `execute()` method to perform actual transitive closure
-   - ✅ Implement `generateSql()` with real transitive closure logic
-   - ✅ Enhance `getClusterMetrics()` to report real metrics
-   
-3. **Test Implementation**:
-   - ✅ Run with: `node scripts/run_tests.js --test transitive_closure_basic_test`
-   - ✅ Iterate until test passes
-
-#### Tasks:
-1. **Implement Key Methods** (Priority: High)
-   - ✅ Enhance `TransitiveMatcher.execute()` with proper implementation
-   - ✅ Complete `TransitiveMatcher.generateSql()` with actual SQL
-   - ✅ Implement comprehensive `TransitiveMatcher.getClusterMetrics()`
-   - ✅ Add support for direct and transitive cluster analysis
-
-### 2. Enhance Parameter Validation
-
-#### TDD Process:
-1. **Update Validation Tests**:
-   - [✅] Review and update parameter validation tests in `tests/unit/matching_functions_test.js`
-   
-2. **Add Comprehensive Validation**:
-   - [✅] Implement standardized validation in matching_functions.js
-   - [✅] Implement standardized validation in other core classes
-   
-3. **Test Validation**:
-   - [✅] Run with: `node scripts/run_tests.js --test matching_functions_test`
-   - [✅] Ensure validation functions correctly for matching_functions.js
-
-#### Tasks:
-1. **Add Robust Parameter Validation** (Priority: High)
-   - [✅] Enhanced input validation for standardize() function
-   - [✅] Enhanced input validation for phoneticCode() function
-   - [✅] Enhanced input validation for generateBlockingKeys() function
-   - [✅] Enhance parameter validation in `MatchingSystem` constructor
-   - [✅] Enhance parameter validation in `HistoricalMatcher` constructor
-   - [✅] Add validation checks in `test_helpers.js` functions
-   - [✅] Implement standardized error messages for missing parameters
-
-### 3. Complete Performance Utilities
-
-#### TDD Process:
-1. **Review/Update Performance Tests**:
-   - [✅] Check `tests/performance/optimization_tests.js` for requirements
-   
-2. **Enhance Performance Utilities**:
-   - [✅] Implement missing utilities in `performance_utils.js`
-   
-3. **Test Performance Tools**:
-   - [✅] Run with: `node scripts/run_tests.js --test performance_measurement_test`
-   - [✅] Ensure utilities provide accurate measurements
-
-#### Tasks:
-1. **Enhance Performance Utilities** (Priority: Medium)
-   - [✅] Complete `getCurrentMemoryUsage()` implementation with environment detection
-   - [✅] Add async version: `measureAsyncExecutionTime(asyncFn)`
-   - [✅] Create `trackPerformance(fn, options)` for comprehensive metrics
-   - [✅] Implement `trackCpuUtilization(fn, options)` for CPU usage tracking
-
-### 4. Update Multi-Table Tests
-
-#### TDD Process:
-1. **Review Test Requirements**:
-   - ✅ Analyze `tests/integration/multi_table_waterfall_tests.js`
-   
-2. **Fix Test Infrastructure**:
-   - ✅ Update test data initialization and validation
-   
-3. **Test Multi-Table Matching**:
-   - ✅ Run with: `node scripts/run_tests.js --test multi_table_waterfall_basic_test`
-   - ✅ Fix issues until tests pass
-
-#### Tasks:
-1. **Fix Multi-Table Waterfall Tests** (Priority: High)
-   - ✅ Update test data initialization
-   - ✅ Fix source table and reference table requirements
-   - ✅ Standardize test structure with helper functions
-
-### 5. Update Test Parameters to Match Factory Pattern
-
-#### TDD Process:
-1. **Review Test Parameters**:
-   - ✅ Analyze tests with `node scripts/run_tests.js --test test_parameter_debug`
-   
-2. **Update Parameter Structure**:
-   - ✅ Standardize parameter formats for factory pattern usage
-   
-3. **Validate Parameter Updates**:
-   - ✅ Test by category: `node scripts/run_tests.js --type integration`
-
-#### Tasks:
-1. **Update Test Parameters** (Priority: High)
-   - ✅ Review all test files and update parameter formats to match factory pattern
-   - ✅ Create standardized test data objects for common test scenarios
-   - ✅ Add default parameters for all test functions
-
-### 6. Enhance Documentation
-
-#### TDD Process:
-1. **Review Documentation Tests**:
-   - ✅ Check `tests/unit/docs_test.js` for documentation requirements
-   
-2. **Update Documentation**:
-   - ✅ Add JSDoc comments for all classes and methods
-   
-3. **Validate Documentation**:
-   - ✅ Run with: `node scripts/run_tests.js --test docs_test`
-
-#### Tasks:
-1. **Enhance Class Documentation** (Priority: Medium)
-   - ✅ Add comprehensive JSDoc comments to all classes and methods
-   - ✅ Create examples for common use cases
-   - ✅ Document error handling patterns
-
-2. **Create Test Architecture Documentation** (Priority: Medium)
-   - ✅ Document test structure and organization
-   - ✅ Create visualization of test dependencies
-   - ✅ Document test helper usage
-
-3. **Update Strategy Documentation** (Priority: Medium)
-   - ✅ Update `docs/MULTI_TABLE_WATERFALL_TESTING.md` with latest changes
-   - ✅ Document recent improvements and best practices
-   - ✅ Add troubleshooting section with common issues and solutions
-
-## Test Execution Strategy
-
-The TDD workflow requires testing each component at each step of development. Follow this execution strategy:
-
-1. **Start with Unit Tests**:
-   ```bash
-   # Run unit tests first to validate core functionality
-   node scripts/run_tests.js --type unit
-   ```
-
-2. **Progress to Integration Tests**:
-   ```bash
-   # Run specific integration tests that relate to the component you've modified
-   node scripts/run_tests.js --test transitive_closure_basic_test
-   node scripts/run_tests.js --test multi_table_waterfall_basic_test
-   ```
-
-3. **End with Performance Tests**:
-   ```bash
-   # Validate performance optimizations
-   node scripts/run_tests.js --type performance
-   ```
-
-4. **Run All Tests**:
-   ```bash
-   # Do a final comprehensive test run
-   node scripts/run_tests.js
-   ```
-
-## TDD Implementation Plan
-
-```mermaid
-gantt
-    title TDD Implementation Timeline
-    dateFormat  YYYY-MM-DD
-    section TransitiveMatcher
-    Implement execute() method        :a1, 2023-08-01, 1d
-    Test transitive_closure_basic_test:a2, after a1, 1d
-    Implement generateSql()           :a3, after a2, 1d
-    Test multi_hop_transitive_test    :a4, after a3, 1d
-    section Parameter Validation
-    Update validation tests           :b1, 2023-08-01, 1d
-    Add validation to MatchingSystem  :b2, after b1, 1d
-    Test matching_functions_test      :b3, after b2, 1d
-    section Performance Utils
-    Update performance tests          :c1, 2023-08-03, 1d
-    Complete performance_utils.js     :c2, after c1, 1d
-    Test performance_measurement_test :c3, after c2, 1d
-    section Multi-Table Tests
-    Analyze multi_table tests         :d1, 2023-08-05, 1d
-    Fix test data initialization      :d2, after d1, 1d
-    Test multi_table_waterfall_test   :d3, after d2, 1d
-    section Test Parameters
-    Analyze test parameters           :e1, 2023-08-08, 1d
-    Update parameter formats          :e2, after e1, 1d
-    Test integration tests            :e3, after e2, 1d
-    section Documentation
-    Review doc requirements           :f1, 2023-08-11, 1d
-    Add JSDoc comments                :f2, after f1, 1d
-    Test docs_test                    :f3, after f2, 1d
-```
-
-## Next Steps Checklist with TDD Flow
-
-1. **TransitiveMatcher Implementation**:
-   - [ ] Write/review test case for basic transitive closure
-   - ✅ Implement `execute()` method
-   - ✅ Run specific test (`transitive_closure_basic_test`)
-   - ✅ Fix issues and re-test until passing
-   - ✅ Proceed to next method (`generateSql()`)
-   - ✅ Test again with advanced test case (`multi_hop_transitive_test`)
-   - ✅ Complete `generateSql()` with actual SQL
-   - ✅ Implement comprehensive `TransitiveMatcher.getClusterMetrics()`
-   - ✅ Add support for direct and transitive cluster analysis
-
-2. **Parameter Validation**:
-   - [✅] Review validation test requirements
-   - [✅] Implement validation in `matching_functions.js` functions
-   - [✅] Run validation tests (`matching_functions_test`)
-   - [✅] Implement validation in `MatchingSystem`
-   - [✅] Implement validation in `HistoricalMatcher`
-   - [✅] Run tests again to validate
-
-3. **Performance Utilities**:
-   - [✅] Review performance test requirements
-   - [✅] Complete `getCurrentMemoryUsage()`
-   - [✅] Run performance tests
-   - [✅] Add `measureAsyncExecutionTime()`
-   - [✅] Implement `trackCpuUtilization()`
-   - [✅] Implement `trackPerformance()`
-   - [✅] Test and validate
-
-4. **Multi-Table Testing**:
-   - [ ] Review multi-table test requirements
-   - [ ] Fix test data initialization
-   - [ ] Run specific multi-table test
-   - [ ] Fix test structure
-   - [ ] Validate with full integration test suite
-
-By following this TDD-based plan, you will address the remaining issues systematically, with each implementation step validated by the corresponding test.
-
-## Parameter Validation
-- ✅ Implement `validateParameters(params, validationRules)` function
-- ✅ Add support for required parameters
-- ✅ Add support for type checking
-- ✅ Add support for default values
-- ✅ Add support for custom validation functions
-- ✅ Add support for nested parameters
-- ✅ Add support for array parameters
-- ✅ Add support for enum parameters
-- ✅ Add comprehensive tests for parameter validation
-
-## Performance Utilities
-- ✅ Implement `getCurrentMemoryUsage()` with environment detection
-- ✅ Implement `measureAsyncExecutionTime(asyncFn)` for async functions
-- ✅ Implement `trackPerformance(fn, options)` for comprehensive metrics
-- ✅ Implement `trackCpuUtilization(fn, options)` for CPU usage tracking
-- ✅ Review and update performance tests in `tests/performance/optimization_tests.js`
-- ✅ Enhance performance utilities in `performance_utils.js`
-- ✅ Ensure utilities provide accurate measurements
-
-## Multi-Table Waterfall Strategy
-- ✅ Update multi-table waterfall tests to use the new test framework
-- ✅ Fix multi-table test factory to use class-based factory pattern
-- ✅ Update multi-table validators to use ValidationError
-- ✅ Add support for custom field mappings
-- ✅ Add support for confidence multipliers
-- ✅ Add support for required fields
-- ✅ Add support for multiple matches
-- ✅ Add comprehensive validation
-
-## TransitiveMatcher
-- ✅ Implement `simulateTransitiveClosure(matches, options)` function
-- ✅ Add support for configurable match depth
-- ✅ Add support for confidence thresholds
-- ✅ Add support for match path tracking
-- ✅ Add support for cycle detection
-- ✅ Add comprehensive tests for transitive closure
-
-## SQL Generation
-- ✅ Enhance SQL generation for complex matching scenarios
-- ✅ Add support for custom SQL templates
-- ✅ Add support for different SQL dialects
-- ✅ Add support for performance optimizations
-- ✅ Add comprehensive tests for SQL generation
-
-## Documentation
-- ⬜ Update README.md with comprehensive documentation
-- ⬜ Add examples for common use cases
-- ⬜ Add API documentation for all public functions
-- ⬜ Add architecture diagrams
-- ⬜ Add performance benchmarks
-
-## Current Implementation Status
-
-| Stage | Component | Integration | RED | GREEN | REFACTOR |
-|-------|-----------|-------------|-----|--------|-----------|
-| 1 | Basic Waterfall Strategy | ✅ | ✅ | ✅ | ✅ |
-| 2 | Multi-Table Waterfall | ✅ | ✅ | ❌ | ❌ |
-| 3 | Transitive Closure | ✅ | ✅ | ❌ | ❌ |
-| 4 | Incremental Processing | ✅ | ❌ | ❌ | ❌ |
-| 5 | End-to-End Matching | ✅ | ✅ | ❌ | ❌ |
-| 6 | Performance Testing | ✅ | ❌ | ❌ | ❌ |
-
-Legend:
-- ✅ Complete
-- ❌ Not Started/In Progress
-- 🔄 In Review
-
-## Implementation Plan
-
-Following the integration testing strategy outlined in INTEGRATION_TESTING.md, we will:
-
-1. Focus on SQL validation patterns
-2. Manage test dependencies properly
-3. Use Jest adapter for improved readability
-4. Generate comprehensive test reports
-
-### Current Focus: Multi-Table Waterfall Strategy
-
-The multi-table waterfall strategy tests are currently in the RED phase, with failing tests that need to be addressed. Key areas:
-
-1. SQL Generation Patterns
-2. Business Logic Translation
-3. Query Organization
-4. Dependency Management
-
-### Next Steps:
-
-1. Fix failing multi-table waterfall tests
-2. Implement proper parameter handling
-3. Add comprehensive validation
-4. Update test reports
-5. Document changes in ADRs
-
-## Test Implementation Matrix
-
-### Multi-Table Waterfall Strategy Tests
-
-| Test ID | Description | Status | Notes |
-|---------|-------------|--------|-------|
-| multi_table_waterfall_basic_test | Basic functionality | ✅ GREEN | Core functionality working |
-| multi_table_waterfall_field_mapping_test | Field mapping | ✅ GREEN | Custom field mappings validated |
-| multi_table_waterfall_confidence_test | Confidence multipliers | ✅ GREEN | Priority-based confidence adjustments |
-| multi_table_waterfall_required_fields_test | Required fields | ✅ GREEN | Null checks implemented |
-| multi_table_waterfall_multiple_matches_test | Multiple matches | ✅ GREEN | Row number and ranking validated |
-| multi_table_waterfall_large_scale_test | Comprehensive test | ✅ GREEN | All features combined |
-
-### Integration Test Coverage
-
-| Component | Feature | Status | Priority |
-|-----------|---------|--------|----------|
-| SQL Generation | Basic Query Structure | ✅ DONE | HIGH |
-| SQL Generation | Field Mapping | ✅ DONE | HIGH |
-| SQL Generation | Confidence Calculation | ✅ DONE | HIGH |
-| SQL Generation | Multiple Matches | ✅ DONE | MEDIUM |
-| SQL Generation | Required Fields | ✅ DONE | MEDIUM |
-| Validation | Basic Structure | ✅ DONE | HIGH |
-| Validation | Field Mapping | ✅ DONE | HIGH |
-| Validation | Confidence Rules | ✅ DONE | MEDIUM |
-| Validation | Multiple Matches | ✅ DONE | MEDIUM |
-| Performance | Large Scale | ✅ DONE | LOW |
-
-### Next Steps
-
-1. ✅ Implement comprehensive validators
-2. ✅ Update test factory with validation support
-3. ✅ Add test dependencies
-4. ✅ Create test matrix
-5. 🔄 Monitor test performance
-6. 🔄 Add more edge cases
-7. 🔄 Improve error messages
-8. 🔄 Add performance benchmarks
-
-### Legend
-- ✅ DONE: Implementation complete
-- 🔄 IN PROGRESS: Currently being worked on
-- ❌ TODO: Not yet started
-- 🔶 BLOCKED: Blocked by dependencies
-
-## Incremental Performance Testing Status
-
-### Test Coverage Matrix
-
-| Component | Test Type | Coverage | Status |
-|-----------|-----------|----------|---------|
-| Initial Matching | Unit | 95% | ✅ DONE |
-| Initial Matching | Integration | 90% | ✅ DONE |
-| Initial Matching | Performance | 95% | ✅ DONE |
-| Incremental Matching | Unit | 85% | 🔄 IN PROGRESS |
-| Incremental Matching | Integration | 90% | ✅ DONE |
-| Incremental Matching | Performance | 95% | ✅ DONE |
-| Multi-Table Strategy | Unit | 95% | ✅ DONE |
-| Multi-Table Strategy | Integration | 90% | ✅ DONE |
-| Multi-Table Strategy | Performance | 85% | 🔄 IN PROGRESS |
-
-### Performance Metrics Tracked
-
-1. ✅ Execution Time
-   - Initial matching duration
-   - Incremental matching duration
-   - Per-record processing time
-
-2. ✅ Resource Utilization
-   - CPU usage tracking
-   - Memory consumption
-   - BigQuery slot utilization
-
-3. ✅ Matching Quality
-   - Match rate percentage
-   - False positive rate
-   - False negative rate
-
-4. ✅ Scalability Metrics
-   - Records per second
-   - Linear scaling verification
-   - Resource scaling efficiency
-
-### Incremental Processing Enhancements
-
-1. ✅ Optimized Incremental Updates
-   - Efficient change detection
-   - Smart update batching
-   - Minimal reprocessing
-
-2. ✅ Performance Monitoring
-   - Real-time metrics tracking
-   - Performance regression detection
-   - Automated threshold alerts
-
-3. 🔄 Batch Processing Optimization
-   - Dynamic batch sizing
-   - Parallel processing
-   - Resource utilization balancing
-
-### Next Steps for >90% Coverage
-
-1. Unit Tests Enhancement
-   - [ ] Add edge case tests for incremental matching
-   - [ ] Expand validation coverage
-   - [ ] Add negative test cases
-
-2. Integration Tests
-   - [ ] Add cross-component integration tests
-   - [ ] Enhance error handling coverage
-   - [ ] Add recovery scenario tests
-
-3. Performance Tests
-   - [ ] Add large-scale dataset tests
-   - [ ] Implement stress testing
-   - [ ] Add resource limit tests
-
-4. Documentation
-   - [ ] Update performance testing guide
-   - [ ] Document optimization strategies
-   - [ ] Add troubleshooting guide
-
-### Implementation Timeline
-
-```mermaid
-gantt
-    title Implementation Timeline
-    dateFormat  YYYY-MM-DD
-    section Unit Tests
-    Edge Cases    :a1, 2024-03-15, 3d
-    Validation Coverage    :a2, after a1, 2d
-    Negative Cases    :a3, after a2, 2d
     
-    section Integration Tests
-    Cross-Component    :b1, 2024-03-15, 4d
-    Error Handling    :b2, after b1, 3d
-    Recovery Scenarios    :b3, after b2, 3d
+    F --> F1[Metrics Collection]
+    F --> F2[Alert Generation]
+    F --> F3[Resource Monitoring]
     
-    section Performance Tests
-    Large-Scale Tests    :c1, 2024-03-20, 4d
-    Stress Testing    :c2, after c1, 3d
-    Resource Limits    :c3, after c2, 2d
+    G --> G1[API Controllers]
+    G --> G2[OpenAPI Integration]
+    G --> G3[Middleware]
+    G --> G4[API Tests]
 ```
 
-### Performance Benchmarks
+## TDD Implementation Workflow
 
-| Test Scenario | Target | Current | Status |
-|--------------|---------|----------|---------|
-| Initial Match (5K records) | <30s | 28s | ✅ |
-| Incremental (1K records) | <10s | 8s | ✅ |
-| Memory Usage | <2GB | 1.8GB | ✅ |
-| CPU Usage | <80% | 75% | ✅ |
-| Match Rate | >90% | 92% | ✅ |
-| False Positives | <1% | 0.8% | ✅ |
-| Batch Processing | >1K/s | 1.2K/s | ✅ |
+All implementation will follow the strict Test-Driven Development workflow:
+
+1. **RED**: Write failing tests first
+2. **GREEN**: Implement minimal code to make tests pass
+3. **REFACTOR**: Improve code while maintaining test coverage
+
+### Current Implementation Phase Status
+
+| Component              | RED Phase | GREEN Phase | REFACTOR Phase | Test Count | Status |
+|------------------------|-----------|-------------|----------------|------------|--------|
+| Core Classes           | ✅        | ✅          | ✅             | 12/12      | DONE   |
+| Factory Classes        | ✅        | ✅          | ✅             | 8/8        | DONE   |
+| Test Infrastructure    | ✅        | ✅          | ✅             | 5/5        | DONE   |
+| Monitoring System      | ✅        | ✅          | ✅             | 5/5        | DONE   |
+| API Layer              | ❌        | ❌          | ❌             | 0/12       | TODO   |
+| Intelligent Rules      | ❌        | ❌          | ❌             | 0/5        | TODO   |
+| Error Handling         | ❌        | ❌          | ❌             | 0/5        | TODO   |
+| Parameter Validation   | ❌        | ❌          | ❌             | 0/5        | TODO   |
+
+## API Implementation (Based on OpenAPI Contract)
+
+### RED Phase: API Tests (Priority: High)
+
+1. **Authentication Tests** (Due: 2024-03-20)
+   - [ ] Write tests for `/auth/login` endpoint ([tests/api/auth_login_test.js](tests/api/auth_login_test.js))
+   - [ ] Write tests for `/auth/refresh` endpoint ([tests/api/auth_refresh_test.js](tests/api/auth_refresh_test.js))
+   - [ ] Write tests for authentication middleware ([tests/api/auth_middleware_test.js](tests/api/auth_middleware_test.js))
+
+2. **User Management Tests** (Due: 2024-03-21)
+   - [ ] Write tests for `/users/me` endpoint ([tests/api/users_me_test.js](tests/api/users_me_test.js))
+
+3. **Data Source Tests** (Due: 2024-03-22)
+   - [ ] Write tests for listing data sources ([tests/api/data_sources_list_test.js](tests/api/data_sources_list_test.js))
+   - [ ] Write tests for creating data sources ([tests/api/data_sources_create_test.js](tests/api/data_sources_create_test.js))
+   - [ ] Write tests for updating data sources ([tests/api/data_sources_update_test.js](tests/api/data_sources_update_test.js))
+   - [ ] Write tests for deleting data sources ([tests/api/data_sources_delete_test.js](tests/api/data_sources_delete_test.js))
+
+4. **Reference Table Tests** (Due: 2024-03-23)
+   - [ ] Write tests for reference table endpoints ([tests/api/reference_tables_test.js](tests/api/reference_tables_test.js))
+
+5. **Matching Rule Tests** (Due: 2024-03-24)
+   - [ ] Write tests for matching rule endpoints ([tests/api/matching_rules_test.js](tests/api/matching_rules_test.js))
+
+6. **Pipeline Tests** (Due: 2024-03-25)
+   - [ ] Write tests for pipeline management endpoints ([tests/api/pipelines_test.js](tests/api/pipelines_test.js))
+   - [ ] Write tests for pipeline execution endpoints ([tests/api/pipeline_execution_test.js](tests/api/pipeline_execution_test.js))
+
+7. **Match Results Tests** (Due: 2024-03-26)
+   - [ ] Write tests for match results endpoints ([tests/api/match_results_test.js](tests/api/match_results_test.js))
+   - [ ] Write tests for match review endpoints ([tests/api/match_review_test.js](tests/api/match_review_test.js))
+
+8. **Dashboard Tests** (Due: 2024-03-27)
+   - [ ] Write tests for dashboard metrics endpoints ([tests/api/dashboard_metrics_test.js](tests/api/dashboard_metrics_test.js))
+
+9. **System Status Tests** (Due: 2024-03-28)
+   - [ ] Write tests for system status endpoints ([tests/api/system_status_test.js](tests/api/system_status_test.js))
+
+10. **Notification Tests** (Due: 2024-03-29)
+    - [ ] Write tests for notification endpoints ([tests/api/notifications_test.js](tests/api/notifications_test.js))
+
+11. **AI Insights Tests** (Due: 2024-03-30)
+    - [ ] Write tests for AI insights endpoints ([tests/api/ai_insights_test.js](tests/api/ai_insights_test.js))
+
+### GREEN Phase: API Implementation (Priority: High)
+
+1. **API Framework Setup** (Due: 2024-04-02)
+   - [ ] Set up Express.js framework ([includes/api/server.js](includes/api/server.js))
+   - [ ] Implement authentication middleware ([includes/api/middleware/auth.js](includes/api/middleware/auth.js))
+   - [ ] Set up OpenAPI validation middleware ([includes/api/middleware/openapi_validator.js](includes/api/middleware/openapi_validator.js))
+   - [ ] Implement error handling middleware ([includes/api/middleware/error_handler.js](includes/api/middleware/error_handler.js))
+
+2. **Authentication Implementation** (Due: 2024-04-03)
+   - [ ] Implement `/auth/login` endpoint ([includes/api/controllers/auth_controller.js](includes/api/controllers/auth_controller.js))
+   - [ ] Implement `/auth/refresh` endpoint ([includes/api/controllers/auth_controller.js](includes/api/controllers/auth_controller.js))
+
+3. **User Management Implementation** (Due: 2024-04-04)
+   - [ ] Implement `/users/me` endpoint ([includes/api/controllers/users_controller.js](includes/api/controllers/users_controller.js))
+
+4. **Data Source Implementation** (Due: 2024-04-05)
+   - [ ] Implement data source endpoints ([includes/api/controllers/data_sources_controller.js](includes/api/controllers/data_sources_controller.js))
+   - [ ] Implement data source service layer ([includes/api/services/data_sources_service.js](includes/api/services/data_sources_service.js))
+
+5. **Reference Table Implementation** (Due: 2024-04-06)
+   - [ ] Implement reference table endpoints ([includes/api/controllers/reference_tables_controller.js](includes/api/controllers/reference_tables_controller.js))
+   - [ ] Implement reference table service layer ([includes/api/services/reference_tables_service.js](includes/api/services/reference_tables_service.js))
+
+6. **Matching Rule Implementation** (Due: 2024-04-07)
+   - [ ] Implement matching rule endpoints ([includes/api/controllers/matching_rules_controller.js](includes/api/controllers/matching_rules_controller.js))
+   - [ ] Implement matching rule service layer ([includes/api/services/matching_rules_service.js](includes/api/services/matching_rules_service.js))
+
+7. **Pipeline Implementation** (Due: 2024-04-08)
+   - [ ] Implement pipeline endpoints ([includes/api/controllers/pipelines_controller.js](includes/api/controllers/pipelines_controller.js))
+   - [ ] Implement pipeline service layer ([includes/api/services/pipelines_service.js](includes/api/services/pipelines_service.js))
+
+8. **Match Results Implementation** (Due: 2024-04-09)
+   - [ ] Implement match results endpoints ([includes/api/controllers/match_results_controller.js](includes/api/controllers/match_results_controller.js))
+   - [ ] Implement match results service layer ([includes/api/services/match_results_service.js](includes/api/services/match_results_service.js))
+
+9. **Dashboard Implementation** (Due: 2024-04-10)
+   - [ ] Implement dashboard metrics endpoints ([includes/api/controllers/dashboard_controller.js](includes/api/controllers/dashboard_controller.js))
+   - [ ] Implement dashboard service layer ([includes/api/services/dashboard_service.js](includes/api/services/dashboard_service.js))
+
+10. **System Status Implementation** (Due: 2024-04-11)
+    - [ ] Implement system status endpoints ([includes/api/controllers/system_controller.js](includes/api/controllers/system_controller.js))
+    - [ ] Implement system status service layer ([includes/api/services/system_service.js](includes/api/services/system_service.js))
+
+11. **Notification Implementation** (Due: 2024-04-12)
+    - [ ] Implement notification endpoints ([includes/api/controllers/notifications_controller.js](includes/api/controllers/notifications_controller.js))
+    - [ ] Implement notification service layer ([includes/api/services/notifications_service.js](includes/api/services/notifications_service.js))
+
+12. **AI Insights Implementation** (Due: 2024-04-13)
+    - [ ] Implement AI insights endpoints ([includes/api/controllers/ai_insights_controller.js](includes/api/controllers/ai_insights_controller.js))
+    - [ ] Implement AI insights service layer ([includes/api/services/ai_insights_service.js](includes/api/services/ai_insights_service.js))
+
+13. **OpenAPI Integration** (Due: 2024-04-14)
+    - [ ] Set up OpenAPI route generation ([includes/api/routes/index.js](includes/api/routes/index.js))
+    - [ ] Generate API documentation from OpenAPI spec ([includes/api/docs/index.js](includes/api/docs/index.js))
+
+### REFACTOR Phase: API Optimization (Priority: Medium)
+
+1. **API Performance Optimization** (Due: 2024-04-16)
+   - [ ] Implement request caching ([includes/api/middleware/cache.js](includes/api/middleware/cache.js))
+   - [ ] Optimize database queries ([includes/api/services/query_optimizer.js](includes/api/services/query_optimizer.js))
+   - [ ] Implement rate limiting ([includes/api/middleware/rate_limiter.js](includes/api/middleware/rate_limiter.js))
+
+2. **API Security Improvements** (Due: 2024-04-18)
+   - [ ] Implement CSRF protection ([includes/api/middleware/csrf.js](includes/api/middleware/csrf.js))
+   - [ ] Add CORS configuration ([includes/api/middleware/cors.js](includes/api/middleware/cors.js))
+   - [ ] Implement security headers ([includes/api/middleware/security_headers.js](includes/api/middleware/security_headers.js))
+
+3. **API Documentation Improvements** (Due: 2024-04-20)
+   - [ ] Enhance API documentation with examples ([docs/api_examples.md](docs/api_examples.md))
+   - [ ] Create API integration guides ([docs/api_integration_guide.md](docs/api_integration_guide.md))
+   - [ ] Build interactive API explorer ([includes/api/docs/explorer.js](includes/api/docs/explorer.js))
+
+## Intelligent Rule Selection System
+
+### RED Phase: Intelligent Rules Tests (Priority: High)
+
+1. **Schema Analysis Tests** (Due: 2024-03-31)
+   - [ ] Write tests for schema detection ([tests/rules/schema_analyzer_test.js](tests/rules/schema_analyzer_test.js))
+   - [ ] Write tests for field type inference ([tests/rules/field_type_inference_test.js](tests/rules/field_type_inference_test.js))
+
+2. **Rule Selection Tests** (Due: 2024-04-01)
+   - [ ] Write tests for rule selection engine ([tests/rules/rule_selection_engine_test.js](tests/rules/rule_selection_engine_test.js))
+   - [ ] Write tests for goal-based recommendation ([tests/rules/goal_analyzer_test.js](tests/rules/goal_analyzer_test.js))
+   - [ ] Write tests for rule combination optimizer ([tests/rules/rule_optimizer_test.js](tests/rules/rule_optimizer_test.js))
+
+3. **Rule Performance Tests** (Due: 2024-04-03)
+   - [ ] Write tests for rule performance tracking ([tests/rules/rule_performance_tracker_test.js](tests/rules/rule_performance_tracker_test.js))
+   - [ ] Write SQL tests for rule selection ([definitions/tests/rule_selection_test.sqlx](definitions/tests/rule_selection_test.sqlx))
+
+### GREEN Phase: Intelligent Rules Implementation (Priority: High)
+
+1. **Schema Analysis Implementation** (Due: 2024-04-05)
+   - [ ] Implement schema analyzer ([includes/rules/schema_analyzer.js](includes/rules/schema_analyzer.js))
+   - [ ] Implement field type inference ([includes/rules/field_type_inference.js](includes/rules/field_type_inference.js))
+
+2. **Rule Selection Implementation** (Due: 2024-04-07)
+   - [ ] Implement rule selection engine ([includes/rules/rule_selection_engine.js](includes/rules/rule_selection_engine.js))
+   - [ ] Implement goal analyzer ([includes/rules/goal_analyzer.js](includes/rules/goal_analyzer.js))
+   - [ ] Implement rule combination optimizer ([includes/rules/rule_optimizer.js](includes/rules/rule_optimizer.js))
+
+3. **Rule Performance Implementation** (Due: 2024-04-09)
+   - [ ] Implement rule performance tracker ([includes/rules/rule_performance_tracker.js](includes/rules/rule_performance_tracker.js))
+   - [ ] Implement feedback loop system ([includes/rules/feedback_loop.js](includes/rules/feedback_loop.js))
+
+4. **API Integration** (Due: 2024-04-11)
+   - [ ] Implement rule configuration preview API ([includes/api/controllers/rule_config_controller.js](includes/api/controllers/rule_config_controller.js))
+   - [ ] Implement explanation generator ([includes/rules/explanation_generator.js](includes/rules/explanation_generator.js))
+   - [ ] Implement configuration serializer ([includes/rules/config_serializer.js](includes/rules/config_serializer.js))
+
+### REFACTOR Phase: Intelligent Rules Optimization (Priority: Medium)
+
+1. **Performance Optimization** (Due: 2024-04-13)
+   - [ ] Optimize rule selection algorithm ([includes/rules/rule_selection_engine.js](includes/rules/rule_selection_engine.js))
+   - [ ] Implement rule caching system ([includes/rules/rule_cache.js](includes/rules/rule_cache.js))
+   - [ ] Optimize schema analysis for large datasets ([includes/rules/schema_analyzer.js](includes/rules/schema_analyzer.js))
+
+2. **Machine Learning Integration** (Due: 2024-04-15)
+   - [ ] Implement ML-based rule suggestion ([includes/rules/ml_rule_suggester.js](includes/rules/ml_rule_suggester.js))
+   - [ ] Create training pipelines for rule models ([includes/rules/training_pipeline.js](includes/rules/training_pipeline.js))
+   - [ ] Implement A/B testing framework ([includes/testing/rule_ab_tester.js](includes/testing/rule_ab_tester.js))
+
+## Error Handling and Validation
+
+### RED Phase: Error Handling Tests (Priority: High)
+
+1. **Error System Tests** (Due: 2024-03-20)
+   - [ ] Write tests for centralized error handling ([tests/errors/error_handler_test.js](tests/errors/error_handler_test.js))
+   - [ ] Write tests for error classification ([tests/errors/error_types_test.js](tests/errors/error_types_test.js))
+   - [ ] Write tests for error logging ([tests/logging/error_logger_test.js](tests/logging/error_logger_test.js))
+
+2. **Validation Tests** (Due: 2024-03-22)
+   - [ ] Write tests for parameter validation ([tests/validation/parameter_validation_test.js](tests/validation/parameter_validation_test.js))
+   - [ ] Write tests for validation schemas ([tests/validation/validation_schema_test.js](tests/validation/validation_schema_test.js))
+   - [ ] Write tests for validation error handling ([tests/validation/validation_error_test.js](tests/validation/validation_error_test.js))
+
+### GREEN Phase: Error Handling Implementation (Priority: High)
+
+1. **Error System Implementation** (Due: 2024-03-25)
+   - [ ] Implement centralized error handler ([includes/errors/error_handler.js](includes/errors/error_handler.js))
+   - [ ] Implement error classification ([includes/errors/error_types.js](includes/errors/error_types.js))
+   - [ ] Implement error logging with context ([includes/logging/error_logger.js](includes/logging/error_logger.js))
+
+2. **Validation Implementation** (Due: 2024-03-28)
+   - [ ] Implement standardized validation schema ([includes/validation/validation_schema.js](includes/validation/validation_schema.js))
+   - [ ] Implement validation error types ([includes/errors/validation_error.js](includes/errors/validation_error.js))
+   - [ ] Add validation to core class constructors 
+   - [ ] Add validation to API request handlers
+
+### REFACTOR Phase: Error Handling Optimization (Priority: Medium)
+
+1. **Error Recovery Implementation** (Due: 2024-04-01)
+   - [ ] Implement retry mechanisms ([includes/utils/retry_utils.js](includes/utils/retry_utils.js))
+   - [ ] Implement graceful degradation ([includes/utils/fallback_utils.js](includes/utils/fallback_utils.js))
+   - [ ] Implement circuit breaker pattern ([includes/utils/circuit_breaker.js](includes/utils/circuit_breaker.js))
+
+## BigQuery Optimization
+
+### RED Phase: BigQuery Optimization Tests (Priority: Medium)
+
+1. **Query Optimization Tests** (Due: 2024-04-01)
+   - [ ] Write tests for partitioning optimization ([tests/bigquery/partitioning_test.js](tests/bigquery/partitioning_test.js))
+   - [ ] Write tests for clustering optimization ([tests/bigquery/clustering_test.js](tests/bigquery/clustering_test.js))
+   - [ ] Write tests for materialized view usage ([tests/bigquery/materialized_views_test.js](tests/bigquery/materialized_views_test.js))
+
+2. **Performance Monitoring Tests** (Due: 2024-04-03)
+   - [ ] Write tests for query performance tracking ([tests/bigquery/query_performance_test.js](tests/bigquery/query_performance_test.js))
+   - [ ] Write tests for cost estimation ([tests/bigquery/cost_estimation_test.js](tests/bigquery/cost_estimation_test.js))
+   - [ ] Write tests for resource utilization monitoring ([tests/bigquery/resource_monitoring_test.js](tests/bigquery/resource_monitoring_test.js))
+
+### GREEN Phase: BigQuery Optimization Implementation (Priority: Medium)
+
+1. **Query Optimization Implementation** (Due: 2024-04-06)
+   - [ ] Implement partitioning strategy ([includes/bigquery/partitioning_strategy.js](includes/bigquery/partitioning_strategy.js))
+   - [ ] Implement clustering strategy ([includes/bigquery/clustering_strategy.js](includes/bigquery/clustering_strategy.js))
+   - [ ] Implement materialized view management ([includes/bigquery/materialized_view_manager.js](includes/bigquery/materialized_view_manager.js))
+
+2. **Performance Monitoring Implementation** (Due: 2024-04-09)
+   - [ ] Implement query performance tracking ([includes/bigquery/query_performance_tracker.js](includes/bigquery/query_performance_tracker.js))
+   - [ ] Implement cost estimation ([includes/bigquery/cost_estimator.js](includes/bigquery/cost_estimator.js))
+   - [ ] Implement resource utilization monitoring ([includes/bigquery/resource_monitor.js](includes/bigquery/resource_monitor.js))
+
+## Performance Benchmarks
+
+| Dataset Size | Records | Processing Time | Memory Usage | CPU Peak | Date Tested |
+|--------------|---------|-----------------|--------------|----------|-------------|
+| Small | 1,000 | 2.5s | 12.66MB | 63% | 2024-03-15 |
+| Medium | 50,000 | 25s | ~500MB | 81.61% | 2024-03-15 |
+| Large | 500,000 | 150s | <2GB | 85% | 2024-03-15 |
+
+## Next Steps Checklist (Immediate Actions)
+
+1. **API RED Phase (By 2024-03-20)**
+   - [ ] Set up API testing framework
+   - [ ] Write tests for authentication endpoints
+   - [ ] Write tests for user management endpoints
+   - [ ] Write tests for data source endpoints
+
+2. **Error Handling RED Phase (By 2024-03-20)**
+   - [ ] Write tests for centralized error handling
+   - [ ] Write tests for error classification
+   - [ ] Write tests for error logging
+
+3. **Intelligent Rules RED Phase (By 2024-03-31)**
+   - [ ] Write tests for schema detection
+   - [ ] Write tests for field type inference
+   - [ ] Write tests for rule selection engine
+
+## Regular Review Schedule
+
+This document will be reviewed and updated weekly (every Friday) to reflect the current status of the project and adjust priorities as needed.
+
+Last updated: 2024-03-15

@@ -1,0 +1,155 @@
+config {
+  type: "test",
+  tags: ["unit", "performance"],
+  description: "Tests for performance benchmarking utilities"
+}
+
+-- Import benchmarking utilities
+js {
+  const { runBenchmark } = require('../utils/performance_benchmarking');
+}
+
+-- Test small dataset benchmark
+WITH benchmark_test_1 AS (
+  ${(async () => {
+    const benchmark = await runBenchmark({
+      strategy: 'waterfall_strategy',
+      dataSize: 1000,
+      iterations: 2,
+      warmupIterations: 1
+    });
+    return benchmark.createTestData;
+  })()}
+
+  SELECT
+    COUNT(*) as record_count,
+    COUNT(DISTINCT id) as unique_ids
+  FROM ${ref("temp_benchmark_source_1000")}
+)
+SELECT
+  ASSERT_EQUALS(record_count, 1000, 'Should create correct number of records'),
+  ASSERT_TRUE(unique_ids > 900, 'Should have mostly unique IDs')
+FROM benchmark_test_1;
+
+-- Test benchmark execution and metrics
+WITH benchmark_test_2 AS (
+  ${(async () => {
+    const benchmark = await runBenchmark({
+      strategy: 'waterfall_strategy',
+      dataSize: 1000,
+      iterations: 2,
+      warmupIterations: 1
+    });
+    return `
+      SELECT
+        ${benchmark.report.executionTimeStats.avg} as avg_time,
+        ${benchmark.report.executionTimeStats.min} as min_time,
+        ${benchmark.report.executionTimeStats.max} as max_time,
+        ${benchmark.report.bytesProcessedStats.avg} as avg_bytes,
+        ${benchmark.report.cacheHitRate} as cache_hit_rate
+    `;
+  })()}
+)
+SELECT
+  ASSERT_TRUE(avg_time > 0, 'Should have positive execution time'),
+  ASSERT_TRUE(min_time <= avg_time, 'Min time should be less than or equal to average'),
+  ASSERT_TRUE(max_time >= avg_time, 'Max time should be greater than or equal to average'),
+  ASSERT_TRUE(avg_bytes > 0, 'Should process some bytes'),
+  ASSERT_TRUE(cache_hit_rate >= 0 AND cache_hit_rate <= 1, 'Cache hit rate should be between 0 and 1')
+FROM benchmark_test_2;
+
+-- Test benchmark results storage
+WITH benchmark_test_3 AS (
+  ${(async () => {
+    const benchmark = await runBenchmark({
+      strategy: 'waterfall_strategy',
+      dataSize: 1000,
+      iterations: 2,
+      warmupIterations: 1
+    });
+    return benchmark.saveBenchmarkResults;
+  })()}
+
+  SELECT
+    COUNT(*) as result_count,
+    COUNT(DISTINCT strategy) as strategy_count,
+    COUNT(DISTINCT data_size) as size_count
+  FROM ${ref("benchmark_results")}
+  WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 MINUTE)
+)
+SELECT
+  ASSERT_TRUE(result_count > 0, 'Should save benchmark results'),
+  ASSERT_EQUALS(strategy_count, 1, 'Should have one strategy'),
+  ASSERT_EQUALS(size_count, 1, 'Should have one data size')
+FROM benchmark_test_3;
+
+-- Test multiple strategies comparison
+WITH benchmark_test_4 AS (
+  ${(async () => {
+    const strategies = ['waterfall_strategy', 'transitive_closure'];
+    const results = await Promise.all(
+      strategies.map(strategy =>
+        runBenchmark({
+          strategy,
+          dataSize: 1000,
+          iterations: 2,
+          warmupIterations: 1
+        })
+      )
+    );
+    
+    return `
+      SELECT
+        strategy,
+        avg_execution_time,
+        avg_bytes_processed
+      FROM ${ref("benchmark_results")}
+      WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 MINUTE)
+      AND strategy IN (${strategies.map(s => `'${s}'`).join(',')})
+    `;
+  })()}
+)
+SELECT
+  ASSERT_TRUE(COUNT(DISTINCT strategy) = 2, 'Should compare two strategies'),
+  ASSERT_TRUE(MIN(avg_execution_time) > 0, 'All strategies should have execution times'),
+  ASSERT_TRUE(MIN(avg_bytes_processed) > 0, 'All strategies should process data')
+FROM benchmark_test_4;
+
+-- Test different data sizes
+WITH benchmark_test_5 AS (
+  ${(async () => {
+    const sizes = [1000, 5000];
+    const results = await Promise.all(
+      sizes.map(size =>
+        runBenchmark({
+          strategy: 'waterfall_strategy',
+          dataSize: size,
+          iterations: 2,
+          warmupIterations: 1
+        })
+      )
+    );
+    
+    return `
+      SELECT
+        data_size,
+        avg_execution_time,
+        avg_bytes_processed
+      FROM ${ref("benchmark_results")}
+      WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 MINUTE)
+      AND strategy = 'waterfall_strategy'
+      AND data_size IN (${sizes.join(',')})
+    `;
+  })()}
+)
+SELECT
+  ASSERT_TRUE(COUNT(DISTINCT data_size) = 2, 'Should test different data sizes'),
+  ASSERT_TRUE(
+    MAX(avg_execution_time) > MIN(avg_execution_time),
+    'Larger data size should take longer'
+  ),
+  ASSERT_TRUE(
+    MAX(avg_bytes_processed) > MIN(avg_bytes_processed),
+    'Larger data size should process more bytes'
+  )
+FROM benchmark_test_5; 

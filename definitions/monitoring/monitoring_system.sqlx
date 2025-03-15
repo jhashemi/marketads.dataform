@@ -1,0 +1,193 @@
+config {
+  type: "operations",
+  description: "Monitoring system for matching operations",
+  dependencies: ["utils/resource_monitor"]
+}
+
+js {
+  const { ResourceMonitor } = require('../utils/resource_monitor');
+
+  const createMonitoringSystem = (config = {}) => {
+    const {
+      projectId = process.env.BIGQUERY_PROJECT_ID,
+      datasetId = 'monitoring_data',
+      metricsTable = 'matching_metrics',
+      alertsTable = 'matching_alerts',
+      thresholds = {
+        memory: 80, // 80% memory usage
+        cpu: 90,    // 90% CPU usage
+        duration: 2, // 2x baseline duration
+        errorRate: 1 // 1% error rate
+      }
+    } = config;
+
+    const createMetricsTable = () => `
+      CREATE TABLE IF NOT EXISTS \`${projectId}.${datasetId}.${metricsTable}\` (
+        timestamp TIMESTAMP,
+        strategy STRING,
+        operation_id STRING,
+        data_size INT64,
+        duration_ms INT64,
+        memory_usage_mb FLOAT64,
+        cpu_usage_percent FLOAT64,
+        io_operations INT64,
+        bytes_processed INT64,
+        rows_processed INT64,
+        error_count INT64,
+        status STRING
+      )`;
+
+    const createAlertsTable = () => `
+      CREATE TABLE IF NOT EXISTS \`${projectId}.${datasetId}.${alertsTable}\` (
+        timestamp TIMESTAMP,
+        alert_type STRING,
+        severity STRING,
+        message STRING,
+        operation_id STRING,
+        metric_value FLOAT64,
+        threshold_value FLOAT64
+      )`;
+
+    const recordMetrics = (metrics) => `
+      INSERT INTO \`${projectId}.${datasetId}.${metricsTable}\` (
+        timestamp,
+        strategy,
+        operation_id,
+        data_size,
+        duration_ms,
+        memory_usage_mb,
+        cpu_usage_percent,
+        io_operations,
+        bytes_processed,
+        rows_processed,
+        error_count,
+        status
+      )
+      VALUES (
+        CURRENT_TIMESTAMP(),
+        '${metrics.strategy}',
+        '${metrics.operationId}',
+        ${metrics.dataSize},
+        ${metrics.duration},
+        ${metrics.memory.used},
+        ${metrics.cpu.percentage},
+        ${metrics.io.operations},
+        ${metrics.bytesProcessed},
+        ${metrics.rowsProcessed},
+        ${metrics.errorCount},
+        '${metrics.status}'
+      )`;
+
+    const checkThresholds = () => `
+      WITH current_metrics AS (
+        SELECT *
+        FROM \`${projectId}.${datasetId}.${metricsTable}\`
+        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
+      ),
+      
+      baseline_metrics AS (
+        SELECT
+          strategy,
+          AVG(duration_ms) as avg_duration,
+          AVG(memory_usage_mb) as avg_memory,
+          AVG(cpu_usage_percent) as avg_cpu,
+          AVG(error_count) / NULLIF(AVG(rows_processed), 0) * 100 as error_rate
+        FROM \`${projectId}.${datasetId}.${metricsTable}\`
+        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+        GROUP BY strategy
+      ),
+      
+      alerts AS (
+        -- Memory alerts
+        SELECT
+          CURRENT_TIMESTAMP() as timestamp,
+          'memory_usage' as alert_type,
+          CASE
+            WHEN memory_usage_mb > ${thresholds.memory} * 1.2 THEN 'critical'
+            ELSE 'warning'
+          END as severity,
+          CONCAT('Memory usage at ', ROUND(memory_usage_mb, 2), 'MB exceeds threshold of ', ${thresholds.memory}, 'MB') as message,
+          operation_id,
+          memory_usage_mb as metric_value,
+          ${thresholds.memory} as threshold_value
+        FROM current_metrics
+        WHERE memory_usage_mb > ${thresholds.memory}
+        
+        UNION ALL
+        
+        -- CPU alerts
+        SELECT
+          CURRENT_TIMESTAMP() as timestamp,
+          'cpu_usage' as alert_type,
+          CASE
+            WHEN cpu_usage_percent > ${thresholds.cpu} * 1.2 THEN 'critical'
+            ELSE 'warning'
+          END as severity,
+          CONCAT('CPU usage at ', ROUND(cpu_usage_percent, 2), '% exceeds threshold of ', ${thresholds.cpu}, '%') as message,
+          operation_id,
+          cpu_usage_percent as metric_value,
+          ${thresholds.cpu} as threshold_value
+        FROM current_metrics
+        WHERE cpu_usage_percent > ${thresholds.cpu}
+        
+        UNION ALL
+        
+        -- Duration alerts
+        SELECT
+          CURRENT_TIMESTAMP() as timestamp,
+          'duration' as alert_type,
+          CASE
+            WHEN m.duration_ms > b.avg_duration * ${thresholds.duration} * 1.5 THEN 'critical'
+            ELSE 'warning'
+          END as severity,
+          CONCAT('Operation duration of ', m.duration_ms, 'ms exceeds ', ${thresholds.duration}, 'x baseline of ', ROUND(b.avg_duration, 2), 'ms') as message,
+          m.operation_id,
+          m.duration_ms as metric_value,
+          b.avg_duration * ${thresholds.duration} as threshold_value
+        FROM current_metrics m
+        JOIN baseline_metrics b ON m.strategy = b.strategy
+        WHERE m.duration_ms > b.avg_duration * ${thresholds.duration}
+        
+        UNION ALL
+        
+        -- Error rate alerts
+        SELECT
+          CURRENT_TIMESTAMP() as timestamp,
+          'error_rate' as alert_type,
+          CASE
+            WHEN error_count / NULLIF(rows_processed, 0) * 100 > ${thresholds.errorRate} * 2 THEN 'critical'
+            ELSE 'warning'
+          END as severity,
+          CONCAT('Error rate of ', ROUND(error_count / NULLIF(rows_processed, 0) * 100, 2), '% exceeds threshold of ', ${thresholds.errorRate}, '%') as message,
+          operation_id,
+          error_count / NULLIF(rows_processed, 0) * 100 as metric_value,
+          ${thresholds.errorRate} as threshold_value
+        FROM current_metrics
+        WHERE error_count / NULLIF(rows_processed, 0) * 100 > ${thresholds.errorRate}
+      )
+      
+      INSERT INTO \`${projectId}.${datasetId}.${alertsTable}\`
+      SELECT * FROM alerts`;
+
+    return {
+      createMetricsTable,
+      createAlertsTable,
+      recordMetrics,
+      checkThresholds
+    };
+  };
+
+  module.exports = {
+    createMonitoringSystem
+  };
+}
+
+-- Initialize monitoring system
+${(() => {
+  const monitoringSystem = createMonitoringSystem();
+  return `
+    -- Create required tables
+    ${monitoringSystem.createMetricsTable()};
+    ${monitoringSystem.createAlertsTable()};
+  `;
+})()} 

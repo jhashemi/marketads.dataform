@@ -1,0 +1,179 @@
+config {
+  type: "operations",
+  description: "Performance benchmarking utilities for matching strategies",
+  hasOutput: false
+}
+
+js {
+  const runBenchmark = async (params) => {
+    const {
+      strategy,
+      dataSize,
+      iterations = 3,
+      warmupIterations = 1
+    } = params;
+
+    const metrics = {
+      executionTimes: [],
+      bytesProcessed: [],
+      slotMs: [],
+      cacheHits: [],
+      memoryUsage: []
+    };
+
+    // Create test data
+    const createTestData = () => {
+      const sourceTable = `temp_benchmark_source_${dataSize}`;
+      const refTable = `temp_benchmark_ref_${dataSize}`;
+
+      return `
+        CREATE OR REPLACE TABLE ${ref(sourceTable)} AS
+        WITH source_data AS (
+          SELECT
+            CAST(FLOOR(RAND() * ${dataSize}) AS INT64) as id,
+            CONCAT('user_', CAST(FLOOR(RAND() * ${dataSize}) AS STRING)) as email,
+            CONCAT('name_', CAST(FLOOR(RAND() * ${dataSize}) AS STRING)) as name
+          FROM UNNEST(GENERATE_ARRAY(1, ${dataSize}))
+        )
+        SELECT DISTINCT * FROM source_data;
+
+        CREATE OR REPLACE TABLE ${ref(refTable)} AS
+        WITH ref_data AS (
+          SELECT
+            CAST(FLOOR(RAND() * ${dataSize}) AS INT64) as id,
+            CONCAT('user_', CAST(FLOOR(RAND() * ${dataSize}) AS STRING)) as email,
+            CONCAT('name_', CAST(FLOOR(RAND() * ${dataSize}) AS STRING)) as name
+          FROM UNNEST(GENERATE_ARRAY(1, ${dataSize}))
+        )
+        SELECT DISTINCT * FROM ref_data;
+      `;
+    };
+
+    // Run warmup iterations
+    for (let i = 0; i < warmupIterations; i++) {
+      await ref(strategy).execute({
+        sourceTable: `temp_benchmark_source_${dataSize}`,
+        refTable: `temp_benchmark_ref_${dataSize}`,
+        outputTable: `temp_benchmark_output_warmup_${i}`
+      });
+    }
+
+    // Run benchmark iterations
+    for (let i = 0; i < iterations; i++) {
+      const startTime = Date.now();
+      const startMemory = process.memoryUsage().heapUsed;
+
+      const result = await ref(strategy).execute({
+        sourceTable: `temp_benchmark_source_${dataSize}`,
+        refTable: `temp_benchmark_ref_${dataSize}`,
+        outputTable: `temp_benchmark_output_${i}`
+      });
+
+      const endTime = Date.now();
+      const endMemory = process.memoryUsage().heapUsed;
+
+      metrics.executionTimes.push(endTime - startTime);
+      metrics.bytesProcessed.push(result.totalBytesProcessed);
+      metrics.slotMs.push(result.totalSlotMs);
+      metrics.cacheHits.push(result.cacheHit);
+      metrics.memoryUsage.push(endMemory - startMemory);
+    }
+
+    // Calculate statistics
+    const calculateStats = (values) => {
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const sorted = [...values].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      const min = sorted[0];
+      const max = sorted[sorted.length - 1];
+      const stdDev = Math.sqrt(
+        values.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / values.length
+      );
+
+      return { avg, median, min, max, stdDev };
+    };
+
+    // Generate benchmark report
+    const report = {
+      strategy,
+      dataSize,
+      iterations,
+      executionTimeStats: calculateStats(metrics.executionTimes),
+      bytesProcessedStats: calculateStats(metrics.bytesProcessed),
+      slotMsStats: calculateStats(metrics.slotMs),
+      cacheHitRate: metrics.cacheHits.filter(hit => hit).length / iterations,
+      memoryUsageStats: calculateStats(metrics.memoryUsage)
+    };
+
+    // Save benchmark results
+    const saveBenchmarkResults = () => {
+      const resultsTable = 'benchmark_results';
+      return `
+        CREATE TABLE IF NOT EXISTS ${ref(resultsTable)} (
+          strategy STRING,
+          data_size INT64,
+          iterations INT64,
+          avg_execution_time FLOAT64,
+          median_execution_time FLOAT64,
+          min_execution_time FLOAT64,
+          max_execution_time FLOAT64,
+          std_dev_execution_time FLOAT64,
+          avg_bytes_processed FLOAT64,
+          avg_slot_ms FLOAT64,
+          cache_hit_rate FLOAT64,
+          avg_memory_usage FLOAT64,
+          timestamp TIMESTAMP
+        );
+
+        INSERT INTO ${ref(resultsTable)} (
+          strategy,
+          data_size,
+          iterations,
+          avg_execution_time,
+          median_execution_time,
+          min_execution_time,
+          max_execution_time,
+          std_dev_execution_time,
+          avg_bytes_processed,
+          avg_slot_ms,
+          cache_hit_rate,
+          avg_memory_usage,
+          timestamp
+        )
+        VALUES (
+          '${strategy}',
+          ${dataSize},
+          ${iterations},
+          ${report.executionTimeStats.avg},
+          ${report.executionTimeStats.median},
+          ${report.executionTimeStats.min},
+          ${report.executionTimeStats.max},
+          ${report.executionTimeStats.stdDev},
+          ${report.bytesProcessedStats.avg},
+          ${report.slotMsStats.avg},
+          ${report.cacheHitRate},
+          ${report.memoryUsageStats.avg},
+          CURRENT_TIMESTAMP()
+        );
+      `;
+    };
+
+    return {
+      createTestData: createTestData(),
+      saveBenchmarkResults: saveBenchmarkResults(),
+      report
+    };
+  };
+
+  module.exports = {
+    runBenchmark
+  };
+}
+
+-- Example usage:
+-- const benchmark = await runBenchmark({
+--   strategy: 'waterfall_strategy',
+--   dataSize: 100000,
+--   iterations: 3,
+--   warmupIterations: 1
+-- }); 

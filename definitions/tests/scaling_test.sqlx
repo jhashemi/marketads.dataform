@@ -1,0 +1,208 @@
+config {
+  type: "test",
+  tags: ["scaling", "performance"],
+  description: "Automated scaling tests for matching strategies",
+  dependencies: [
+    "matching/waterfall_strategy",
+    "matching/transitive_closure",
+    "utils/resource_monitor"
+  ]
+}
+
+WITH 
+-- Generate test data for different sizes
+small_source AS (
+  SELECT 
+    GENERATE_UUID() as id,
+    CONCAT('user', CAST(ROW_NUMBER() OVER() as STRING)) as email,
+    CONCAT('First', CAST(ROW_NUMBER() OVER() as STRING)) as first_name,
+    CONCAT('Last', CAST(ROW_NUMBER() OVER() as STRING)) as last_name
+  FROM UNNEST(GENERATE_ARRAY(1, 1000))
+),
+
+medium_source AS (
+  SELECT 
+    GENERATE_UUID() as id,
+    CONCAT('user', CAST(ROW_NUMBER() OVER() as STRING)) as email,
+    CONCAT('First', CAST(ROW_NUMBER() OVER() as STRING)) as first_name,
+    CONCAT('Last', CAST(ROW_NUMBER() OVER() as STRING)) as last_name
+  FROM UNNEST(GENERATE_ARRAY(1, 50000))
+),
+
+large_source AS (
+  SELECT 
+    GENERATE_UUID() as id,
+    CONCAT('user', CAST(ROW_NUMBER() OVER() as STRING)) as email,
+    CONCAT('First', CAST(ROW_NUMBER() OVER() as STRING)) as first_name,
+    CONCAT('Last', CAST(ROW_NUMBER() OVER() as STRING)) as last_name
+  FROM UNNEST(GENERATE_ARRAY(1, 500000))
+),
+
+-- Create reference tables with overlapping data
+small_reference AS (
+  SELECT 
+    s.*,
+    CASE WHEN MOD(ROW_NUMBER() OVER(), 3) = 0 
+         THEN CONCAT('alt', email)
+         ELSE email END as email,
+    CASE WHEN MOD(ROW_NUMBER() OVER(), 5) = 0 
+         THEN CONCAT('alt', first_name)
+         ELSE first_name END as first_name
+  FROM small_source s
+),
+
+medium_reference AS (
+  SELECT 
+    s.*,
+    CASE WHEN MOD(ROW_NUMBER() OVER(), 3) = 0 
+         THEN CONCAT('alt', email)
+         ELSE email END as email,
+    CASE WHEN MOD(ROW_NUMBER() OVER(), 5) = 0 
+         THEN CONCAT('alt', first_name)
+         ELSE first_name END as first_name
+  FROM medium_source s
+),
+
+large_reference AS (
+  SELECT 
+    s.*,
+    CASE WHEN MOD(ROW_NUMBER() OVER(), 3) = 0 
+         THEN CONCAT('alt', email)
+         ELSE email END as email,
+    CASE WHEN MOD(ROW_NUMBER() OVER(), 5) = 0 
+         THEN CONCAT('alt', first_name)
+         ELSE first_name END as first_name
+  FROM large_source s
+),
+
+-- Test 1: Small Dataset Performance
+small_test AS (
+  SELECT
+    'small_dataset' as test_name,
+    COUNT(*) as record_count,
+    (SELECT COUNT(*) FROM ${ref("waterfall_strategy")}(small_source, small_reference)) as match_count,
+    (SELECT AVG(confidence) FROM ${ref("waterfall_strategy")}(small_source, small_reference)) as avg_confidence,
+    TIMESTAMP_DIFF(
+      (SELECT MAX(processed_at) FROM ${ref("waterfall_strategy")}(small_source, small_reference)),
+      (SELECT MIN(processed_at) FROM ${ref("waterfall_strategy")}(small_source, small_reference)),
+      MILLISECOND
+    ) as processing_time_ms
+  FROM small_source
+),
+
+-- Test 2: Medium Dataset Performance
+medium_test AS (
+  SELECT
+    'medium_dataset' as test_name,
+    COUNT(*) as record_count,
+    (SELECT COUNT(*) FROM ${ref("waterfall_strategy")}(medium_source, medium_reference)) as match_count,
+    (SELECT AVG(confidence) FROM ${ref("waterfall_strategy")}(medium_source, medium_reference)) as avg_confidence,
+    TIMESTAMP_DIFF(
+      (SELECT MAX(processed_at) FROM ${ref("waterfall_strategy")}(medium_source, medium_reference)),
+      (SELECT MIN(processed_at) FROM ${ref("waterfall_strategy")}(medium_source, medium_reference)),
+      MILLISECOND
+    ) as processing_time_ms
+  FROM medium_source
+),
+
+-- Test 3: Large Dataset Performance
+large_test AS (
+  SELECT
+    'large_dataset' as test_name,
+    COUNT(*) as record_count,
+    (SELECT COUNT(*) FROM ${ref("waterfall_strategy")}(large_source, large_reference)) as match_count,
+    (SELECT AVG(confidence) FROM ${ref("waterfall_strategy")}(large_source, large_reference)) as avg_confidence,
+    TIMESTAMP_DIFF(
+      (SELECT MAX(processed_at) FROM ${ref("waterfall_strategy")}(large_source, large_reference)),
+      (SELECT MIN(processed_at) FROM ${ref("waterfall_strategy")}(large_source, large_reference)),
+      MILLISECOND
+    ) as processing_time_ms
+  FROM large_source
+),
+
+-- Test 4: Parallel Processing Performance
+parallel_test AS (
+  SELECT
+    'parallel_processing' as test_name,
+    COUNT(*) as record_count,
+    (
+      SELECT COUNT(*)
+      FROM (
+        SELECT * FROM ${ref("waterfall_strategy")}(large_source, large_reference)
+        WHERE MOD(FARM_FINGERPRINT(CAST(id as STRING)), 4) = parallel_partition
+      )
+    ) as match_count,
+    processing_time_ms
+  FROM large_source
+  CROSS JOIN UNNEST([0,1,2,3]) as parallel_partition
+  GROUP BY parallel_partition, processing_time_ms
+),
+
+-- Test 5: Memory Usage Patterns
+memory_test AS (
+  SELECT
+    dataset_size,
+    AVG(memory_usage_mb) as avg_memory_mb,
+    MAX(memory_usage_mb) as peak_memory_mb,
+    AVG(processing_time_ms) as avg_processing_time_ms
+  FROM (
+    SELECT 
+      'small' as dataset_size,
+      ${ref("resource_monitor")}() as metrics
+    FROM small_test
+    UNION ALL
+    SELECT 
+      'medium' as dataset_size,
+      ${ref("resource_monitor")}() as metrics
+    FROM medium_test
+    UNION ALL
+    SELECT 
+      'large' as dataset_size,
+      ${ref("resource_monitor")}() as metrics
+    FROM large_test
+  )
+  GROUP BY dataset_size
+)
+
+-- Assertions
+SELECT
+  CASE 
+    -- Test 1: Small Dataset Performance
+    WHEN NOT EXISTS (
+      SELECT 1 FROM small_test 
+      WHERE processing_time_ms <= 5000  -- 5 seconds max
+      AND record_count = 1000
+      AND match_count >= 300  -- At least 30% match rate
+    ) THEN ERROR('Small dataset performance test failed')
+    
+    -- Test 2: Medium Dataset Performance
+    WHEN NOT EXISTS (
+      SELECT 1 FROM medium_test
+      WHERE processing_time_ms <= 30000  -- 30 seconds max
+      AND record_count = 50000
+      AND match_count >= 15000  -- At least 30% match rate
+    ) THEN ERROR('Medium dataset performance test failed')
+    
+    -- Test 3: Large Dataset Performance
+    WHEN NOT EXISTS (
+      SELECT 1 FROM large_test
+      WHERE processing_time_ms <= 180000  -- 3 minutes max
+      AND record_count = 500000
+      AND match_count >= 150000  -- At least 30% match rate
+    ) THEN ERROR('Large dataset performance test failed')
+    
+    -- Test 4: Parallel Processing
+    WHEN NOT EXISTS (
+      SELECT 1 FROM parallel_test
+      WHERE processing_time_ms <= 45000  -- 45 seconds max per partition
+    ) THEN ERROR('Parallel processing test failed')
+    
+    -- Test 5: Memory Usage
+    WHEN NOT EXISTS (
+      SELECT 1 FROM memory_test
+      WHERE dataset_size = 'large'
+      AND peak_memory_mb <= 2048  -- 2GB max memory usage
+    ) THEN ERROR('Memory usage test failed')
+    
+    ELSE 'All scaling tests passed'
+  END as test_result; 

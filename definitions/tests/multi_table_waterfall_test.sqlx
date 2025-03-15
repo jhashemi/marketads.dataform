@@ -2,69 +2,198 @@ config {
   type: "test",
   description: "Test of multi-table waterfall matching prioritization",
   tags: ["test", "matching", "waterfall"],
-  dependencies: []
+  dependencies: ["matching/waterfall_strategy"]
 }
 
-// Import the matcher
-const matcher = require("../../includes/matcher");
+-- Create test data with known matches across multiple reference tables
+WITH test_data AS (
+  -- Source records
+  SELECT * FROM (
+    SELECT 
+      'S1' as source_id,
+      'John' as first_name,
+      'Smith' as last_name,
+      'john.smith@example.com' as email,
+      'US' as country
+    UNION ALL
+    SELECT 
+      'S2' as source_id,
+      'Jane' as first_name,
+      'Doe' as last_name,
+      'jane.doe@example.com' as email,
+      'UK' as country
+  ),
 
--- Create 3 reference tables with different priorities
-CREATE OR REPLACE TEMPORARY TABLE test_high_priority AS
-SELECT * FROM (
-  SELECT 'T1' AS id, 'John' AS firstname, 'Smith' AS lastname, 'A123' AS customer_id, 'HIGH' AS data_source
-);
+  -- High priority reference table (verified customers)
+  verified_customers AS (
+    SELECT * FROM (
+      SELECT 
+        'V1' as ref_id,
+        'John' as firstname,
+        'Smith' as lastname,
+        'A123' as customer_id,
+        'VERIFIED' as source,
+        0.95 as confidence
+      UNION ALL
+      SELECT 
+        'V2' as ref_id,
+        'Jane' as firstname,
+        'Doe' as lastname,
+        'A456' as customer_id,
+        'VERIFIED' as source,
+        0.92 as confidence
+    )
+  ),
 
-CREATE OR REPLACE TEMPORARY TABLE test_medium_priority AS
-SELECT * FROM (
-  SELECT 'T2' AS id, 'John' AS firstname, 'Smith' AS lastname, 'B456' AS customer_id, 'MEDIUM' AS data_source
-);
+  -- Medium priority reference table (CRM records)
+  crm_customers AS (
+    SELECT * FROM (
+      SELECT 
+        'C1' as ref_id,
+        'John' as firstname,
+        'Smith' as lastname,
+        'B789' as customer_id,
+        'CRM' as source,
+        0.85 as confidence
+      UNION ALL
+      SELECT 
+        'C2' as ref_id,
+        'Jane' as firstname,
+        'Doe' as lastname,
+        'B012' as customer_id,
+        'CRM' as source,
+        0.82 as confidence
+    )
+  ),
 
-CREATE OR REPLACE TEMPORARY TABLE test_low_priority AS
-SELECT * FROM (
-  SELECT 'T3' AS id, 'John' AS firstname, 'Smith' AS lastname, 'C789' AS customer_id, 'LOW' AS data_source
-);
+  -- Low priority reference table (web users)
+  web_users AS (
+    SELECT * FROM (
+      SELECT 
+        'W1' as ref_id,
+        'John' as firstname,
+        'Smith' as lastname,
+        'C345' as customer_id,
+        'WEB' as source,
+        0.75 as confidence
+      UNION ALL
+      SELECT 
+        'W2' as ref_id,
+        'Jane' as firstname,
+        'Doe' as lastname,
+        'C678' as customer_id,
+        'WEB' as source,
+        0.72 as confidence
+    )
+  ),
 
--- Create source data that will match all 3 reference tables
-CREATE OR REPLACE TEMPORARY TABLE test_source_data AS
-SELECT * FROM (
-  SELECT 'S1' AS id, 'John' AS first_name, 'Smith' AS last_name, 'john.smith@example.com' AS email
-);
+  -- Expected results after waterfall matching
+  expected_results AS (
+    SELECT * FROM (
+      -- Should match with verified customers (highest priority)
+      SELECT 
+        'S1' as source_id,
+        'V1' as ref_id,
+        'A123' as customer_id,
+        'VERIFIED' as source,
+        0.95 as confidence
+      UNION ALL
+      SELECT 
+        'S2' as source_id,
+        'V2' as ref_id,
+        'A456' as customer_id,
+        'VERIFIED' as source,
+        0.92 as confidence
+    )
+  )
+),
 
--- Run waterfall matching
-${
-  matcher.waterfall({
-    sourceTable: 'test_source_data',
-    referenceTables: [
-      {name: 'test_high_priority', priority: 1, reliability: 'HIGH'},
-      {name: 'test_medium_priority', priority: 2, reliability: 'MEDIUM'},
-      {name: 'test_low_priority', priority: 3, reliability: 'LOW'}
-    ],
-    fieldMappings: {
-      firstName: {source: "first_name", target: "firstname"},
-      lastName: {source: "last_name", target: "lastname"}
+-- Execute waterfall matching using the factory pattern
+${ref("matching/waterfall_strategy")}(
+  sourceTable => ${ref("test_data")},
+  referenceTables => [
+    {
+      name: ${ref("verified_customers")},
+      priority: 1,
+      fieldMappings: {
+        first_name: "firstname",
+        last_name: "lastname"
+      },
+      requiredFields: ["customer_id"],
+      confidenceMultiplier: 1.2
     },
-    appendFields: ["customer_id", "data_source"],
-    outputTable: 'test_waterfall_results'
-  })
-}
+    {
+      name: ${ref("crm_customers")},
+      priority: 2,
+      fieldMappings: {
+        first_name: "firstname",
+        last_name: "lastname"
+      },
+      requiredFields: ["customer_id"],
+      confidenceMultiplier: 1.0
+    },
+    {
+      name: ${ref("web_users")},
+      priority: 3,
+      fieldMappings: {
+        first_name: "firstname",
+        last_name: "lastname"
+      },
+      requiredFields: ["customer_id"],
+      confidenceMultiplier: 0.8
+    }
+  ],
+  outputTable => "waterfall_matches"
+) AS waterfall_matches
 
--- Verify waterfall prioritization
+-- Test 1: Verify match count
 SELECT
-  CASE
-    -- Check that only one match was found
-    WHEN (SELECT COUNT(*) FROM test_waterfall_results) != 1 THEN 'FAIL: Should have one result'
-    
-    -- Check that the high priority match was selected
-    WHEN (SELECT reference_id FROM test_waterfall_results WHERE source_id = 'S1') != 'T1'
-         THEN 'FAIL: Should match with highest priority reference'
-    
-    -- Check that the high priority data was appended
-    WHEN (SELECT customer_id FROM test_waterfall_results WHERE source_id = 'S1') != 'A123'
-         THEN 'FAIL: Should append data from highest priority match'
-    
-    -- Check data source field
-    WHEN (SELECT data_source FROM test_waterfall_results WHERE source_id = 'S1') != 'HIGH'
-         THEN 'FAIL: Should append correct data source'
-         
-    ELSE 'PASS: Waterfall prioritization worked correctly'
-  END AS waterfall_test;
+  'Match count is correct' as test_name,
+  COUNT(*) = (SELECT COUNT(*) FROM expected_results) as passed
+FROM waterfall_matches
+
+UNION ALL
+
+-- Test 2: Verify highest priority matches were selected
+SELECT
+  'Highest priority matches selected' as test_name,
+  COUNT(*) = (
+    SELECT COUNT(*)
+    FROM waterfall_matches m
+    JOIN expected_results e
+    ON m.source_id = e.source_id
+    AND m.ref_id = e.ref_id
+  ) as passed
+
+UNION ALL
+
+-- Test 3: Verify confidence scores
+SELECT
+  'Confidence scores are correct' as test_name,
+  COUNT(*) = (
+    SELECT COUNT(*)
+    FROM waterfall_matches m
+    JOIN expected_results e
+    ON m.source_id = e.source_id
+    AND ABS(m.confidence - e.confidence) < 0.001
+  ) as passed
+
+UNION ALL
+
+-- Test 4: Verify required fields are present
+SELECT
+  'Required fields are present' as test_name,
+  COUNT(*) = (
+    SELECT COUNT(*)
+    FROM waterfall_matches m
+    WHERE m.customer_id IS NOT NULL
+    AND m.source IS NOT NULL
+  ) as passed
+
+UNION ALL
+
+-- Test 5: Verify no duplicate matches
+SELECT
+  'No duplicate matches exist' as test_name,
+  COUNT(*) = COUNT(DISTINCT source_id) as passed
+FROM waterfall_matches;

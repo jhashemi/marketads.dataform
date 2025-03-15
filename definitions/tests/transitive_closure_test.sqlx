@@ -1,63 +1,115 @@
 config {
   type: "test",
-  description: "Test of transitive closure for finding record clusters",
-  tags: ["test", "matching", "clustering"],
-  dependencies: []
+  tags: ["unit", "matching", "transitive"],
+  description: "Tests for transitive closure matching implementation"
 }
 
-// Import the matcher
-const matcher = require("../../includes/matcher");
+WITH test_matches AS (
+  -- Create test data with known clusters
+  SELECT * FROM (
+    -- Cluster 1: A-B-C (transitive)
+    SELECT 'A' as source_id, 'B' as target_id, 0.9 as confidence UNION ALL
+    SELECT 'B' as source_id, 'C' as target_id, 0.85 as confidence UNION ALL
+    
+    -- Cluster 2: D-E, E-F (transitive)
+    SELECT 'D' as source_id, 'E' as target_id, 0.95 as confidence UNION ALL
+    SELECT 'E' as source_id, 'F' as target_id, 0.88 as confidence UNION ALL
+    
+    -- Cluster 3: G-H (direct only)
+    SELECT 'G' as source_id, 'H' as target_id, 0.92 as confidence UNION ALL
+    
+    -- Isolated node I (no matches)
+    SELECT 'I' as source_id, 'I' as target_id, 1.0 as confidence
+  )
+),
 
--- Create test match data with transitive relationships
--- A->B, B->C, C->D creates A-B-C-D cluster
--- E->F, G->F creates E-F-G cluster
--- H has no match
-CREATE OR REPLACE TEMPORARY TABLE test_matches AS
-SELECT * FROM (
-  SELECT 'A' AS source_id, 'B' AS target_id
-  UNION ALL
-  SELECT 'B' AS source_id, 'C' AS target_id
-  UNION ALL
-  SELECT 'C' AS source_id, 'D' AS target_id
-  UNION ALL
-  SELECT 'E' AS source_id, 'F' AS target_id
-  UNION ALL
-  SELECT 'G' AS source_id, 'F' AS target_id
-);
+expected_results AS (
+  -- Define expected clusters after transitive closure
+  SELECT * FROM (
+    -- Cluster 1: A-B-C
+    SELECT 1 as cluster_id, ['A','B','C'] as cluster_members, 3 as cluster_size,
+           0.875 as avg_confidence, 2 as direct_edges, 1 as transitive_edges UNION ALL
+           
+    -- Cluster 2: D-E-F       
+    SELECT 2 as cluster_id, ['D','E','F'] as cluster_members, 3 as cluster_size,
+           0.915 as avg_confidence, 2 as direct_edges, 1 as transitive_edges UNION ALL
+           
+    -- Cluster 3: G-H
+    SELECT 3 as cluster_id, ['G','H'] as cluster_members, 2 as cluster_size,
+           0.92 as avg_confidence, 1 as direct_edges, 0 as transitive_edges UNION ALL
+           
+    -- Cluster 4: I (singleton)
+    SELECT 4 as cluster_id, ['I'] as cluster_members, 1 as cluster_size,
+           1.0 as avg_confidence, 0 as direct_edges, 0 as transitive_edges
+  )
+)
 
--- Run transitive closure
-${
-  matcher.findClusters({
-    matchesTable: 'test_matches',
-    outputTable: 'test_clusters',
-    maxIterations: 5
-  })
-}
-
--- Verify clustering results
+-- Test 1: Basic cluster formation
 SELECT
-  CASE
-    -- Check cluster count is correct
-    WHEN (SELECT COUNT(*) FROM test_clusters) != 2 THEN 'FAIL: Should find 2 clusters'
-    
-    -- Check first cluster (A-B-C-D) has 4 members
-    WHEN NOT EXISTS (
-      SELECT 1 FROM test_clusters 
-      WHERE array_length(cluster_members) = 4
-      AND 'A' IN UNNEST(cluster_members)
-      AND 'B' IN UNNEST(cluster_members)
-      AND 'C' IN UNNEST(cluster_members)
-      AND 'D' IN UNNEST(cluster_members)
-    ) THEN 'FAIL: First cluster (A-B-C-D) not correctly identified'
-    
-    -- Check second cluster (E-F-G) has 3 members
-    WHEN NOT EXISTS (
-      SELECT 1 FROM test_clusters
-      WHERE array_length(cluster_members) = 3
-      AND 'E' IN UNNEST(cluster_members)
-      AND 'F' IN UNNEST(cluster_members)
-      AND 'G' IN UNNEST(cluster_members)
-    ) THEN 'FAIL: Second cluster (E-F-G) not correctly identified'
-    
-    ELSE 'PASS: Transitive closure correctly found both clusters'
-  END AS clustering_test;
+  'Cluster count matches expected' as test_name,
+  COUNT(*) = (SELECT COUNT(*) FROM expected_results) as passed
+FROM ${ref("matching/transitive_closure")}
+WHERE matchesTable = 'test_matches'
+
+UNION ALL
+
+-- Test 2: Cluster sizes are correct
+SELECT
+  'Cluster sizes match expected' as test_name,
+  COUNT(*) = (
+    SELECT COUNT(*)
+    FROM ${ref("matching/transitive_closure")} a
+    JOIN expected_results b
+    ON a.cluster_size = b.cluster_size
+  ) as passed
+FROM ${ref("matching/transitive_closure")}
+WHERE matchesTable = 'test_matches'
+
+UNION ALL
+
+-- Test 3: Edge counts are correct
+SELECT
+  'Edge counts match expected' as test_name,
+  COUNT(*) = (
+    SELECT COUNT(*)
+    FROM ${ref("matching/transitive_closure")} a
+    JOIN expected_results b
+    ON a.direct_edges = b.direct_edges
+    AND a.transitive_edges = b.transitive_edges
+  ) as passed
+FROM ${ref("matching/transitive_closure")}
+WHERE matchesTable = 'test_matches'
+
+UNION ALL
+
+-- Test 4: Average confidence is within tolerance
+SELECT
+  'Average confidence within tolerance' as test_name,
+  COUNT(*) = (
+    SELECT COUNT(*)
+    FROM ${ref("matching/transitive_closure")} a
+    JOIN expected_results b
+    ON ABS(a.avg_confidence - b.avg_confidence) < 0.001
+  ) as passed
+FROM ${ref("matching/transitive_closure")}
+WHERE matchesTable = 'test_matches'
+
+UNION ALL
+
+-- Test 5: Cluster members match expected
+SELECT
+  'Cluster members match expected' as test_name,
+  COUNT(*) = (
+    SELECT COUNT(*)
+    FROM ${ref("matching/transitive_closure")} a
+    JOIN expected_results b
+    ON ARRAY_LENGTH(a.cluster_members) = ARRAY_LENGTH(b.cluster_members)
+    AND (
+      SELECT COUNT(*)
+      FROM UNNEST(a.cluster_members) x
+      JOIN UNNEST(b.cluster_members) y
+      ON x = y
+    ) = ARRAY_LENGTH(a.cluster_members)
+  ) as passed
+FROM ${ref("matching/transitive_closure")}
+WHERE matchesTable = 'test_matches';
