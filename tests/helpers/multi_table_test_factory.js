@@ -173,39 +173,66 @@ class MultiTableTestFactory {
     const self = this;
     
     return withErrorHandling(async function(context) {
-      // Merge default parameters with test-specific parameters
+      console.log('DEBUG LEGACY TEST: Context object received:', JSON.stringify(context, null, 2));
+      
+      // Prioritize parameters in this order:
+      // 1. Command line parameters (context.parameters)
+      // 2. Test-specific hardcoded parameters (testParameters)
+      // 3. Factory default parameters (self.defaultParameters)
+      console.log('DEBUG LEGACY TEST: Are parameters defined?', !!context.parameters);
+      console.log('DEBUG LEGACY TEST: Parameters content:', JSON.stringify(context.parameters || {}, null, 2));
+      
       const parameters = {
         ...self.defaultParameters,
-        ...(context.parameters || {}),
-        ...testParameters
+        ...(testParameters || {}),
+        ...(context.parameters || {})
       };
       
-      // Validate required parameters
-      self._validateParameters(parameters);
-      
-      // Create strategy using factory pattern
-      const strategy = self.matchStrategyFactory.createMultiTableWaterfallStrategy({
-        referenceTables: parameters.referenceTables,
-        matchingRules: parameters.matchingRules,
-        thresholds: parameters.thresholds,
-        fieldMappings: parameters.fieldMappings,
-        requiredFields: parameters.requiredFields,
-        confidenceMultipliers: parameters.confidenceMultipliers,
-        allowMultipleMatches: parameters.allowMultipleMatches,
-        maxMatches: parameters.maxMatches,
-        confidenceField: parameters.confidenceField
-      });
-      
-      // Generate SQL
-      const sql = strategy.generateSql({
-        sourceTable: parameters.sourceTable,
-        sourceAlias: parameters.sourceAlias || 's',
-        targetAlias: parameters.targetAlias || 't',
-        options: parameters.options || {}
-      });
-      
-      // Validate SQL with provided validator function or default validation
-      return validationFn ? validationFn(sql, parameters) : self._defaultValidation(sql, parameters);
+      try {
+        // Validate required parameters
+        const validatedParams = self._validateParameters(parameters);
+        
+        // Create strategy using factory pattern
+        const strategy = self.matchStrategyFactory.createMultiTableWaterfallStrategy({
+          referenceTables: validatedParams.referenceTables,
+          matchingRules: validatedParams.matchingRules,
+          thresholds: validatedParams.thresholds,
+          fieldMappings: validatedParams.fieldMappings,
+          requiredFields: validatedParams.requiredFields,
+          confidenceMultipliers: validatedParams.confidenceMultipliers,
+          allowMultipleMatches: validatedParams.allowMultipleMatches,
+          maxMatches: validatedParams.maxMatches,
+          confidenceField: validatedParams.confidenceField || 'confidence'
+        });
+        
+        // Generate SQL
+        const sql = strategy.generateSql({
+          sourceTable: validatedParams.sourceTable,
+          sourceAlias: validatedParams.sourceAlias || 's',
+          targetAlias: validatedParams.targetAlias || 't',
+          options: validatedParams.options || {}
+        });
+        
+        // Validate SQL with provided validator function or default validation
+        const validationResult = validationFn 
+          ? validationFn(sql, validatedParams) 
+          : self._defaultValidation(sql, validatedParams);
+        
+        // Add generated SQL to result for debugging
+        if (validationResult.success) {
+          validationResult.generatedSql = sql;
+        }
+        
+        return validationResult;
+      } catch (error) {
+        // Return detailed error information
+        return {
+          success: false,
+          message: `Test failed: ${error.message}`,
+          error: error,
+          parameters: parameters
+        };
+      }
     });
   }
   
@@ -227,13 +254,17 @@ class MultiTableTestFactory {
         fieldMappings: 'object',
         requiredFields: 'object',
         confidenceMultipliers: 'object',
-        factoryOptions: 'object'
+        factoryOptions: 'object',
+        allowMultipleMatches: 'boolean',
+        maxMatches: 'number'
       },
       defaults: {
         fieldMappings: {},
         requiredFields: {},
         confidenceMultipliers: {},
-        factoryOptions: { useClassBasedFactoryPattern: true }
+        factoryOptions: { useClassBasedFactoryPattern: true },
+        allowMultipleMatches: false,
+        maxMatches: 1
       },
       messages: {
         sourceTable: 'Source table is required for multi-table waterfall test',
@@ -248,25 +279,53 @@ class MultiTableTestFactory {
     
     // Validate reference tables
     if (!Array.isArray(validatedParams.referenceTables) || validatedParams.referenceTables.length === 0) {
-      throw new Error('Reference tables must be a non-empty array');
+      throw new Error('At least one reference table is required');
     }
     
-    validatedParams.referenceTables.forEach((refTable, index) => {
-      if (!refTable.id) {
-        throw new Error(`Reference table at index ${index} must have an id`);
+    // Validate each reference table has required properties
+    validatedParams.referenceTables.forEach((table, index) => {
+      if (!table.id) {
+        throw new Error(`Reference table at index ${index} is missing an id property`);
       }
       
-      if (!refTable.table) {
-        throw new Error(`Reference table ${refTable.id} must have a table name`);
+      if (!table.table) {
+        throw new Error(`Reference table ${table.id} is missing a table property`);
+      }
+      
+      if (isNaN(table.priority)) {
+        // Assign default priority if not specified
+        table.priority = index + 1;
       }
     });
     
-    // Ensure there are matching rules for each reference table
-    validatedParams.referenceTables.forEach(refTable => {
-      if (!validatedParams.matchingRules[refTable.id]) {
-        throw new Error(`Matching rules are required for reference table ${refTable.id}`);
+    // Validate matching rules exist for each reference table
+    validatedParams.referenceTables.forEach(table => {
+      if (!validatedParams.matchingRules[table.id]) {
+        throw new Error(`No matching rules defined for reference table ${table.id}`);
+      }
+      
+      const rules = validatedParams.matchingRules[table.id];
+      
+      // Validate rules have required properties
+      if (!rules.blocking || !Array.isArray(rules.blocking) || rules.blocking.length === 0) {
+        throw new Error(`Reference table ${table.id} requires at least one blocking rule`);
+      }
+      
+      if (!rules.scoring || !Array.isArray(rules.scoring) || rules.scoring.length === 0) {
+        throw new Error(`Reference table ${table.id} requires at least one scoring rule`);
       }
     });
+    
+    // Validate thresholds
+    if (!validatedParams.thresholds.high || !validatedParams.thresholds.medium || !validatedParams.thresholds.low) {
+      throw new Error('Thresholds must include high, medium, and low values');
+    }
+    
+    if (typeof validatedParams.thresholds.high !== 'number' || 
+        typeof validatedParams.thresholds.medium !== 'number' || 
+        typeof validatedParams.thresholds.low !== 'number') {
+      throw new Error('Threshold values must be numbers');
+    }
     
     return validatedParams;
   }
@@ -279,47 +338,109 @@ class MultiTableTestFactory {
    * @returns {Object} Validation result
    */
   _defaultValidation(sql, parameters) {
-    // Basic SQL validation
-    validateSQL(sql);
-    
-    // Check that SQL has CTE for source data
-    if (!sql.includes('WITH source_data AS')) {
-      return {
-        success: false,
-        message: 'SQL does not include source data CTE'
-      };
-    }
-    
-    // Check for multi-table waterfall comment
-    if (!sql.includes('Multi-table waterfall match strategy')) {
-      return {
-        success: false,
-        message: 'SQL does not include multi-table waterfall comment'
-      };
-    }
-    
-    // Check that SQL has source table
-    if (!sql.includes(`FROM ${parameters.sourceTable}`)) {
-      return {
-        success: false,
-        message: `SQL does not include source table: ${parameters.sourceTable}`
-      };
-    }
-    
-    // Check that SQL has CTEs for all reference tables
-    for (const refTable of parameters.referenceTables) {
-      if (!sql.includes(`FROM ${refTable.table}`)) {
-        return {
-          success: false,
-          message: `SQL does not include reference table: ${refTable.table}`
-        };
+    try {
+      // Check for basic SQL structure
+      if (!sql || typeof sql !== 'string') {
+        throw new Error('Generated SQL must be a non-empty string');
       }
+      
+      if (!sql.includes('SELECT') || !sql.includes('FROM')) {
+        throw new Error('Generated SQL must contain a valid SELECT statement');
+      }
+      
+      // Check for reference to the source table
+      if (!sql.includes(parameters.sourceTable)) {
+        throw new Error(`SQL must reference source table: ${parameters.sourceTable}`);
+      }
+      
+      // Check for reference tables
+      parameters.referenceTables.forEach(refTable => {
+        if (!sql.includes(refTable.table)) {
+          throw new Error(`SQL must reference reference table: ${refTable.table}`);
+        }
+      });
+      
+      // Check for proper SQL structure
+      const structureChecks = [
+        { pattern: 'WITH', message: 'SQL must use CTEs (WITH clause) for structuring the query' },
+        { pattern: 'JOIN', message: 'SQL must include at least one JOIN operation' },
+        { pattern: 'table_priority', message: 'SQL must include table_priority for reference table prioritization' },
+        { pattern: 'match_score', message: 'SQL must include match_score calculation' }
+      ];
+      
+      structureChecks.forEach(check => {
+        if (!sql.includes(check.pattern)) {
+          throw new Error(check.message);
+        }
+      });
+      
+      // Check for features if enabled in parameters
+      
+      // Check field mapping
+      if (parameters.fieldMappings && Object.keys(parameters.fieldMappings).length > 0) {
+        const anyMappingFound = Object.values(parameters.fieldMappings).some(mappings => {
+          if (!Array.isArray(mappings) || mappings.length === 0) return false;
+          
+          return mappings.some(mapping => {
+            // Check if either source or target field is mentioned in the SQL
+            return sql.includes(mapping.sourceField) || sql.includes(mapping.targetField);
+          });
+        });
+        
+        if (!anyMappingFound) {
+          throw new Error('SQL must implement field mappings when provided in parameters');
+        }
+      }
+      
+      // Check confidence multipliers
+      if (parameters.confidenceMultipliers && Object.keys(parameters.confidenceMultipliers).length > 0) {
+        // At least one multiplier value should be in the SQL
+        const anyMultiplierFound = Object.values(parameters.confidenceMultipliers).some(multiplier => {
+          return sql.includes(multiplier.toString());
+        });
+        
+        if (!anyMultiplierFound) {
+          throw new Error('SQL must implement confidence multipliers when provided in parameters');
+        }
+      }
+      
+      // Check required fields
+      if (parameters.requiredFields && Object.keys(parameters.requiredFields).length > 0) {
+        // At least one set of required fields should be referenced
+        const anyRequiredFieldsFound = Object.entries(parameters.requiredFields).some(([tableId, fields]) => {
+          if (!Array.isArray(fields) || fields.length === 0) return false;
+          
+          return fields.some(field => sql.includes(field));
+        });
+        
+        if (!anyRequiredFieldsFound) {
+          throw new Error('SQL must implement required fields filtering when provided in parameters');
+        }
+      }
+      
+      // Check multiple matches
+      if (parameters.allowMultipleMatches) {
+        if (!sql.includes('ROW_NUMBER()') && !sql.includes('RANK()') && !sql.includes('DENSE_RANK()')) {
+          throw new Error('SQL must implement row numbering or ranking when multiple matches are allowed');
+        }
+        
+        if (parameters.maxMatches > 1 && !sql.includes(parameters.maxMatches.toString())) {
+          throw new Error(`SQL must implement maxMatches limit of ${parameters.maxMatches}`);
+        }
+      }
+      
+      return {
+        success: true,
+        message: 'SQL validation passed',
+        sql: sql
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error
+      };
     }
-    
-    return {
-      success: true,
-      message: 'SQL validation passed'
-    };
   }
 }
 

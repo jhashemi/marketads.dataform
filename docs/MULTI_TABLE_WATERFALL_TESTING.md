@@ -1,10 +1,20 @@
 # Multi-Table Waterfall Strategy Testing Guide
 
-This document outlines the approach for testing the Multi-Table Waterfall matching strategy in the MarketAds Dataform project.
+This document provides a comprehensive guide for testing the Multi-Table Waterfall matching strategy in the MarketAds Dataform project.
 
 ## Overview
 
 The Multi-Table Waterfall strategy is a complex matching strategy that prioritizes matches based on reference table priority and match confidence. It supports multiple reference tables, each with its own priority, matching rules, field mappings, required fields, and confidence multipliers.
+
+## Recent Updates
+
+As of the latest update, the multi-table waterfall tests have been significantly enhanced:
+
+1. **Improved Error Handling**: The test factory now has robust error handling, with detailed error messages and validation checks.
+2. **Enhanced Parameter Validation**: Comprehensive validation of test parameters, including required fields, types, and format checks.
+3. **Better Debug Support**: Added debug logging to help troubleshoot test failures.
+4. **More Flexible Test Structure**: Tests can now be created with minimal configuration, with reasonable defaults.
+5. **Standardized Validation**: Validators have been updated to provide consistent and detailed validation of SQL outputs.
 
 ## Test Components
 
@@ -61,9 +71,7 @@ test('My Multi-Table Test', {
 }, multiTableTestFactory.createTest({}, validateBasicMultiTableStructure));
 ```
 
-#### Custom Test Parameters
-
-You can override default parameters by specifying them in the test parameters:
+#### Advanced Usage with Custom Parameters
 
 ```javascript
 test('Custom Multi-Table Test', {
@@ -78,35 +86,22 @@ test('Custom Multi-Table Test', {
       low: 0.6
     },
     allowMultipleMatches: true,
-    maxMatches: 3
+    maxMatches: 3,
+    fieldMappings: {
+      verified_customers: [
+        { sourceField: "first_name", targetField: "first_name_custom" },
+        { sourceField: "last_name", targetField: "last_name_custom" }
+      ]
+    },
+    requiredFields: {
+      verified_customers: ["email", "first_name"]
+    },
+    confidenceMultipliers: {
+      verified_customers: 1.5,
+      crm_customers: 0.75
+    }
   }
-}, multiTableTestFactory.createTest({}, validateMultipleMatches));
-```
-
-#### Custom Validation
-
-You can create custom validation functions or use the built-in validators from `tests/helpers/multi_table_validators.js`:
-
-```javascript
-test('Custom Validation Test', {
-  type: TestType.INTEGRATION,
-  id: 'custom_validation_test',
-  priority: 1,
-  parameters: {
-    sourceTable: "custom_source_table"
-  }
-}, multiTableTestFactory.createTest({}, (sql, params) => {
-  // Basic validation
-  validateBasicMultiTableStructure(sql, params);
-  
-  // Custom validations
-  expect(sql.includes('my_specific_condition')).toBe(true);
-  
-  return {
-    success: true,
-    message: 'Custom validation passed'
-  };
-}));
+}, multiTableTestFactory.createTest({}, validateComprehensive));
 ```
 
 ### Available Validators
@@ -120,33 +115,36 @@ The following validators are available in `tests/helpers/multi_table_validators.
 - `validateMultipleMatches`: Validates multiple matches in multi-table waterfall SQL
 - `validateComprehensive`: Comprehensive validation of all aspects of multi-table waterfall SQL
 
-## Adding New Tests
+### Creating Custom Validators
 
-To add a new multi-table waterfall test:
+You can create custom validation functions to check specific aspects of the generated SQL:
 
-1. Import the factory and validators:
 ```javascript
-const { MultiTableTestFactory } = require('../helpers/multi_table_test_factory');
-const { validateBasicMultiTableStructure } = require('../helpers/multi_table_validators');
-```
-
-2. Create a test factory instance:
-```javascript
-const multiTableTestFactory = new MultiTableTestFactory();
-```
-
-3. Define the test using the factory:
-```javascript
-test('My New Test', {
-  type: TestType.INTEGRATION,
-  id: 'my_new_test',
-  priority: 1,
-  dependencies: ['multi_table_waterfall_basic_test'], // Optional dependencies
-  parameters: {
-    sourceTable: "my_source_table",
-    // Additional parameters as needed
+function validateCustomFeature(sql, params) {
+  try {
+    // First validate basic structure
+    const basicValidation = validateBasicMultiTableStructure(sql, params);
+    if (!basicValidation.success) {
+      return basicValidation;
+    }
+    
+    // Custom validation logic
+    if (!sql.includes('my_special_feature')) {
+      throw new Error('SQL must include my_special_feature');
+    }
+    
+    return {
+      success: true,
+      message: 'Custom feature validation passed'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message,
+      error
+    };
   }
-}, multiTableTestFactory.createTest({}, validateBasicMultiTableStructure));
+}
 ```
 
 ## Running Tests
@@ -163,6 +161,12 @@ To run a specific test:
 node scripts/run_tests.js --test multi_table_waterfall_basic_test
 ```
 
+To generate a test report:
+
+```bash
+node scripts/run_tests.js --test multi_table_waterfall --report
+```
+
 ## Best Practices
 
 1. **Use the Factory Pattern**: Always use the `MultiTableTestFactory` for creating tests.
@@ -171,6 +175,8 @@ node scripts/run_tests.js --test multi_table_waterfall_basic_test
 4. **Document Test Purpose**: Include clear comments and descriptions for each test.
 5. **Follow Dependencies**: Structure test dependencies logically, with basic tests as prerequisites.
 6. **Keep Tests Focused**: Each test should validate a specific aspect of the strategy.
+7. **Debug with Logging**: Use the built-in debug logging to troubleshoot test failures.
+8. **Regular Maintenance**: Update tests as the strategy evolves to ensure ongoing compatibility.
 
 ## Implementation Details
 
@@ -251,10 +257,30 @@ The tests validate the SQL generated by the strategy, checking for specific patt
 
 ## Troubleshooting
 
-If tests fail with "Cannot read properties of undefined" errors, check:
+### Common Issues
 
-1. Parameter passing: Ensure parameters are correctly passed to the strategy
-2. Class instantiation: Make sure to instantiate the `MatchStrategyFactory` class
-3. Field format: Check that field mappings, required fields, and confidence multipliers have the correct format
+1. **Missing Parameters**: Check if you've provided all required parameters for the test.
+2. **Type Errors**: Make sure parameter types match the expected types (e.g., thresholds are numbers).
+3. **Invalid Reference Tables**: Ensure reference tables have the required properties (id, table, priority).
+4. **Missing Matching Rules**: Make sure matching rules are defined for all reference tables.
+5. **SQL Generation Failure**: Check for syntax errors or invalid parameters in the SQL generation.
 
-When testing required fields or confidence multipliers, use flexible validation patterns as the exact implementation details (like SQL query structure) might change over time. 
+### Debug Logging
+
+The test factory includes debug logging that can help identify issues:
+
+```
+DEBUG LEGACY TEST: Context object received: {...}
+DEBUG LEGACY TEST: Are parameters defined? true
+DEBUG LEGACY TEST: Parameters content: {...}
+```
+
+If you see errors in the debug output, check the following:
+
+1. **Parameter Structure**: Ensure parameters have the correct structure and types.
+2. **Factory Options**: Check factory options (useClassBasedFactoryPattern should be true).
+3. **SQL Validation**: Look for validation errors in the SQL output.
+
+## Conclusion
+
+The Multi-Table Waterfall Strategy testing framework provides a comprehensive way to validate this complex matching strategy. By using the factory pattern, validators, and test utilities, you can ensure that changes to the strategy are thoroughly tested and maintain compatibility with existing functionality. 
