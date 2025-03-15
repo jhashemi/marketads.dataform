@@ -1,0 +1,185 @@
+config {
+  type: "test",
+  tags: ["test", "performance", "optimization"],
+  description: "Performance optimization tests following TDD principles",
+  dependencies: ["query_statistics_test"]
+}
+
+-- Test Case 1: NTILE vs APPROX_QUANTILES Performance
+CREATE OR REPLACE TEMPORARY TABLE test_sales AS
+WITH numbers AS (
+  SELECT ROW_NUMBER() OVER() as n 
+  FROM UNNEST(GENERATE_ARRAY(1, 1000000))
+)
+SELECT 
+  n as id,
+  ROUND(RAND() * 10000, 2) as sales_amount,
+  DATE_SUB(CURRENT_DATE(), INTERVAL CAST(RAND() * 365 AS INT64) DAY) as sale_date
+FROM numbers;
+
+-- Red Light Test: Traditional NTILE approach (should be slower)
+CREATE OR REPLACE TEMPORARY TABLE ntile_results AS
+SELECT
+  id,
+  sales_amount,
+  NTILE(100) OVER (ORDER BY sales_amount DESC) as sales_percentile,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_sales),
+    MILLISECOND
+  ) as execution_time_ms
+FROM test_sales;
+
+-- Green Light Test: Optimized APPROX_QUANTILES approach
+CREATE OR REPLACE TEMPORARY TABLE quantile_results AS
+WITH QuantInfo AS (
+  SELECT
+    o, qval
+  FROM UNNEST((
+    SELECT APPROX_QUANTILES(sales_amount, 100)
+    FROM test_sales
+  )) AS qval
+  WITH OFFSET o
+  WHERE o > 0
+)
+SELECT
+  id,
+  sales_amount,
+  (SELECT (101 - MIN(o)) FROM QuantInfo WHERE sales_amount <= qval) as sales_percentile,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_sales),
+    MILLISECOND
+  ) as execution_time_ms
+FROM test_sales;
+
+-- Test Case 2: COUNT(DISTINCT) vs APPROX_COUNT_DISTINCT Performance
+CREATE OR REPLACE TEMPORARY TABLE test_transactions AS
+SELECT 
+  id,
+  CONCAT('CUST_', CAST(1 + MOD(id, 50000) AS STRING)) as customer_id,
+  CONCAT('PROD_', CAST(1 + MOD(id, 1000) AS STRING)) as product_id,
+  sales_amount
+FROM test_sales;
+
+-- Red Light Test: Traditional COUNT(DISTINCT)
+CREATE OR REPLACE TEMPORARY TABLE exact_counts AS
+SELECT
+  DATE_TRUNC(sale_date, MONTH) as sale_month,
+  COUNT(DISTINCT customer_id) as exact_customer_count,
+  COUNT(DISTINCT product_id) as exact_product_count,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_transactions),
+    MILLISECOND
+  ) as execution_time_ms
+FROM test_transactions t
+JOIN test_sales s ON t.id = s.id
+GROUP BY sale_month;
+
+-- Green Light Test: Optimized APPROX_COUNT_DISTINCT
+CREATE OR REPLACE TEMPORARY TABLE approx_counts AS
+SELECT
+  DATE_TRUNC(sale_date, MONTH) as sale_month,
+  APPROX_COUNT_DISTINCT(customer_id) as approx_customer_count,
+  APPROX_COUNT_DISTINCT(product_id) as approx_product_count,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_transactions),
+    MILLISECOND
+  ) as execution_time_ms
+FROM test_transactions t
+JOIN test_sales s ON t.id = s.id
+GROUP BY sale_month;
+
+-- Test Case 3: JOIN Optimization with INT64 vs STRING
+CREATE OR REPLACE TEMPORARY TABLE string_keys AS
+SELECT 
+  CAST(id AS STRING) as string_id,
+  customer_id,
+  product_id
+FROM test_transactions;
+
+-- Red Light Test: STRING JOIN
+CREATE OR REPLACE TEMPORARY TABLE string_join_results AS
+SELECT
+  t.string_id,
+  t.customer_id,
+  s.sales_amount,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM string_keys),
+    MILLISECOND
+  ) as execution_time_ms
+FROM string_keys t
+JOIN (SELECT CAST(id AS STRING) as string_id, sales_amount FROM test_sales) s
+ON t.string_id = s.string_id;
+
+-- Green Light Test: INT64 JOIN
+CREATE OR REPLACE TEMPORARY TABLE int64_join_results AS
+SELECT
+  t.id,
+  t.customer_id,
+  s.sales_amount,
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    (SELECT MAX(CURRENT_TIMESTAMP()) FROM test_transactions),
+    MILLISECOND
+  ) as execution_time_ms
+FROM test_transactions t
+JOIN test_sales s ON t.id = s.id;
+
+-- Validation
+WITH performance_metrics AS (
+  SELECT
+    'NTILE vs APPROX_QUANTILES' as test_case,
+    (SELECT AVG(execution_time_ms) FROM ntile_results) as baseline_time,
+    (SELECT AVG(execution_time_ms) FROM quantile_results) as optimized_time
+  UNION ALL
+  SELECT
+    'COUNT(DISTINCT) vs APPROX_COUNT_DISTINCT',
+    (SELECT AVG(execution_time_ms) FROM exact_counts),
+    (SELECT AVG(execution_time_ms) FROM approx_counts)
+  UNION ALL
+  SELECT
+    'STRING vs INT64 JOIN',
+    (SELECT AVG(execution_time_ms) FROM string_join_results),
+    (SELECT AVG(execution_time_ms) FROM int64_join_results)
+),
+accuracy_metrics AS (
+  SELECT
+    'APPROX_COUNT_DISTINCT Accuracy' as metric,
+    ABS(
+      (SELECT SUM(exact_customer_count) FROM exact_counts) - 
+      (SELECT SUM(approx_customer_count) FROM approx_counts)
+    ) / (SELECT SUM(exact_customer_count) FROM exact_counts) as error_rate
+)
+SELECT
+  CASE
+    WHEN NOT EXISTS (
+      SELECT 1 FROM performance_metrics 
+      WHERE optimized_time >= baseline_time
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM accuracy_metrics
+      WHERE error_rate > 0.02
+    )
+    THEN 'PASS: All optimizations show improvement and maintain accuracy'
+    ELSE 'FAIL: Some optimizations did not meet performance or accuracy criteria'
+  END as test_result,
+  (
+    SELECT ARRAY_AGG(STRUCT(
+      test_case,
+      baseline_time,
+      optimized_time,
+      ROUND((baseline_time - optimized_time) / baseline_time * 100, 2) as improvement_percent
+    ))
+    FROM performance_metrics
+  ) as performance_summary,
+  (
+    SELECT ARRAY_AGG(STRUCT(
+      metric,
+      error_rate
+    ))
+    FROM accuracy_metrics
+  ) as accuracy_summary; 
