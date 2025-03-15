@@ -118,6 +118,31 @@ const tests = [
     }
   },
   {
+    id: 'matching_functions_standardize_name_invalid_fieldType',
+    name: 'standardize name function - invalid fieldType',
+    type: 'unit',
+    tags: ['matching', 'core', 'standardization', 'validation'],
+    priority: 2, // Low priority, only run if core tests pass
+    testFn: async () => {
+      assert.throws(
+        () => matchingFunctions.standardize('John Smith', 123),
+        Error,
+        'Should throw error for invalid fieldType (number)'
+      );
+      assert.throws(
+        () => matchingFunctions.standardize('John Smith', null),
+        Error,
+        'Should throw error for invalid fieldType (null)'
+      );
+      assert.throws(
+        () => matchingFunctions.standardize('John Smith', 'invalid_type'),
+        Error,
+        'Should throw error for invalid fieldType (invalid_type)'
+      );
+      return true;
+    }
+  },
+  {
     id: 'matching_functions_phoneticCode',
     name: 'phoneticCode function',
     type: 'unit',
@@ -142,6 +167,31 @@ const tests = [
       assert.strictEqual(matchingFunctions.phoneticCode(''), '', 
         'Should handle empty string');
       
+      return true;
+    }
+  },
+    {
+    id: 'matching_functions_phoneticCode_invalid_algorithm',
+    name: 'phoneticCode function - invalid algorithm',
+    type: 'unit',
+    tags: ['matching', 'core', 'phonetic', 'validation'],
+    priority: 2, // Low priority, only run if core tests pass
+    testFn: async () => {
+      assert.throws(
+        () => matchingFunctions.phoneticCode('Smith', 123),
+        Error,
+        'Should throw error for invalid algorithm (number)'
+      );
+      assert.throws(
+        () => matchingFunctions.phoneticCode('Smith', null),
+        Error,
+        'Should throw error for invalid algorithm (null)'
+      );
+      assert.throws(
+        () => matchingFunctions.phoneticCode('Smith', 'invalid_algorithm'),
+        Error,
+        'Should throw error for invalid algorithm (invalid_algorithm)'
+      );
       return true;
     }
   },
@@ -172,7 +222,42 @@ const tests = [
       
       return true;
     }
-  }
+ },
+  {
+    id: 'matching_functions_generateBlockingKeys_invalid_params',
+    name: 'generateBlockingKeys function - invalid params',
+    type: 'unit',
+    tags: ['matching', 'core', 'blocking', 'validation'],
+    priority: 2, // Low priority, only run if core tests pass
+    testFn: async () => {
+      assert.throws(
+        () => matchingFunctions.generateBlockingKeys('invalid record', 'zipcode'),
+        Error,
+        'Should throw error for invalid record (string)'
+      );
+      assert.throws(
+        () => matchingFunctions.generateBlockingKeys(null, 'zipcode'),
+        Error,
+        'Should throw error for invalid record (null)'
+      );
+      assert.throws(
+        () => matchingFunctions.generateBlockingKeys({}, 123),
+        Error,
+        'Should throw error for invalid method (number)'
+      );
+      assert.throws(
+        () => matchingFunctions.generateBlockingKeys({}, null),
+        Error,
+        'Should throw error for invalid method (null)'
+      );
+      assert.throws(
+        () => matchingFunctions.generateBlockingKeys({}, 'invalid_method'),
+        Error,
+        'Should throw error for invalid method (invalid_method)'
+      );
+      return true;
+    }
+  },
 ];
 
 // Add Jest compatibility layer

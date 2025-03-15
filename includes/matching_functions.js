@@ -2,14 +2,46 @@
 // Core reusable functions for the record linkage system
 
 const { semanticTypeMap } = require('./semantic_types');
+const { validateParameters } = require('./validation/parameter_validator');
+
 
 /**
  * Returns a standardized version of the input string for more consistent matching
  * @param {string} input - Raw input string to standardize
  * @param {string} fieldType - Type of field (name, address, phone, email, etc.)
  * @returns {string} - Standardized string
+  const validationRules = {
+    required: ['fieldType'],
+    types: {
+      fieldType: 'string',
+    },
+    constraints: {
+      fieldType: {
+        enum: ['name', 'address', 'phone', 'email', 'zip']
+      }
+    }
+  };
+
+  validateParameters({ fieldType }, validationRules, 'standardize');
+
+
  */
 function standardize(input, fieldType) {
+  // Validate parameters
+  const validationRules = {
+    required: ['fieldType'],
+    types: {
+      fieldType: 'string',
+    },
+    constraints: {
+      fieldType: {
+        enum: ['name', 'address', 'phone', 'email', 'zip']
+      }
+    }
+  };
+
+  validateParameters({ fieldType }, validationRules, 'standardize');
+  
   if (!input) return "";
   
   // Map fieldType to UDF when in SQL context
@@ -84,6 +116,21 @@ function calculateSimilarity(s1, s2, method = 'levenshtein') {
   if (s1 === s2) return 1;
   
   // If we're in SQL context (strings contain SQL placeholders)
+  // Validate parameters
+  const validationRules = {
+    required: ['method'],
+    types: {
+      method: 'string',
+    },
+    constraints: {
+      method: {
+        enum: ['levenshtein', 'jaro_winkler', 'soundex', 'address']
+      }
+    }
+  };
+
+  validateParameters({ method }, validationRules, 'calculateSimilarity');
+
   if (typeof s1 === 'string' && s1.includes('${')) {
     switch (method.toLowerCase()) {
       case 'levenshtein':
@@ -110,6 +157,21 @@ function calculateSimilarity(s1, s2, method = 'levenshtein') {
  * @returns {string} - Phonetic code or SQL expression
  */
 function phoneticCode(name, algorithm = 'soundex') {
+  // Validate parameters
+  const validationRules = {
+    required: ['algorithm'],
+    types: {
+      algorithm: 'string',
+    },
+    constraints: {
+      algorithm: {
+        enum: ['soundex', 'metaphone']
+      }
+    }
+  };
+
+  validateParameters({ algorithm }, validationRules, 'phoneticCode');
+  
   if (!name) return "";
   
   // If we're in SQL context
@@ -143,6 +205,19 @@ function calculateConfidenceScore(sourceRecord, targetRecord, weights, threshold
   let weightedScore = 0;
   const fieldScores = {};
 
+  // Validate parameters
+  const validationRules = {
+    required: ['sourceRecord', 'targetRecord', 'weights', 'thresholds'],
+    types: {
+      sourceRecord: 'object',
+      targetRecord: 'object',
+      weights: 'object',
+      thresholds: 'object',
+    }
+  };
+
+  validateParameters({ sourceRecord, targetRecord, weights, thresholds }, validationRules, 'calculateConfidenceScore');
+  
   for (const field of fields) {
     if (sourceRecord[field] && targetRecord[field]) {
       // Get semantic type for the field, default to field name if not in map
@@ -198,6 +273,22 @@ function calculateConfidenceScore(sourceRecord, targetRecord, weights, threshold
  * @returns {string[]} - Array of blocking keys
  */
 function generateBlockingKeys(record, method) {
+  // Validate parameters
+  const validationRules = {
+    required: ['method', 'record'],
+    types: {
+      method: 'string',
+      record: 'object',
+    },
+    constraints: {
+      method: {
+        enum: ['zipcode', 'name_zip', 'phone', 'name_dob', 'email_prefix', 'soundex_name']
+      }
+    }
+  };
+
+  validateParameters({ method, record }, validationRules, 'generateBlockingKeys');
+  
   const keys = [];
   
   switch(method) {

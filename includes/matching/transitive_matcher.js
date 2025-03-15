@@ -4,6 +4,7 @@
  * Class for performing transitive matching and clustering
  */
 
+const { SqlCompiler } = require('../sql/compiler');
 const { validateParameters } = require('../validation/parameter_validator');
 
 /**
@@ -34,7 +35,7 @@ class TransitiveMatcher {
         includeDirectMatches: 'boolean',
         sourceIdField: 'string',
         targetIdField: 'string',
-        confidenceField: 'string'
+        confidenceField: 'string',
       },
       defaults: {
         outputTable: 'transitive_matches',
@@ -42,11 +43,11 @@ class TransitiveMatcher {
         includeDirectMatches: true,
         sourceIdField: 'source_id',
         targetIdField: 'target_id',
-        confidenceField: 'confidence'
+        confidenceField: 'confidence',
       },
       messages: {
         matchResultsTable: 'Please provide the initial match results table name.',
-        confidenceThreshold: 'Please provide the confidence threshold for transitive closure.'
+        confidenceThreshold: 'Please provide the confidence threshold for transitive closure.',
       }
     };
 
@@ -73,63 +74,58 @@ class TransitiveMatcher {
     
     const startTime = Date.now();
     
-    // Generate and execute SQL to perform transitive closure
-    const sql = this.generateSql();
+    // 1. Fetch matches from matchResultsTable
+    const matches = await this.fetchMatchResults();
     
-    // For testing purposes, we'll include a simulation of execution
-    // In a real implementation, this would execute the SQL against the database
+    // 2. Find connected components (clusters)
+    const clusters = this.findConnectedComponents(matches);
     
-    // Simulate cluster discovery
-    const clusters = await this.simulateTransitiveClosure();
-    
-    // Generate metrics
-    const metrics = this.generateMetrics(clusters);
+    // 3. Generate metrics
+    const metrics = this.generateMetrics(clusters, matches);
     const executionTime = (Date.now() - startTime) / 1000;
     
     return {
-      clusters,
-      metrics,
-      executionTime,
-      sql // Include SQL for debugging
+      clusters: clusters,
+      metrics: metrics,
+      executionTime: executionTime,
+      sql: this.generateSql() // Include SQL for debugging
     };
   }
   
   /**
-   * Simulates transitive closure execution for testing
+   * Fetches match results from the configured table
    * @private
-   * @returns {Array} Array of cluster objects
+   * @async
+   * @returns {Array<Object>} Array of match result objects
    */
-  async simulateTransitiveClosure() {
-    // This simulates what would happen in the database
-    // Build initial direct matches
-    const directMatches = [
+  async fetchMatchResults() {
+    console.log(`Fetching match results from ${this.matchResultsTable}`);
+    
+    const compiler = new SqlCompiler();
+    const sqlQuery = compiler.select(
+      this.matchResultsTable,
+      [this.sourceIdField, this.targetIdField, this.confidenceField]
+    );
+    
+    const queryResult = await dataform.query(sqlQuery).fetch();
+    return queryResult;
+  }
+
+  /**
+   * Simulates fetching match results for testing
+   * @private
+   * @returns {Array} Array of simulated match results
+   */
+  simulateMatchResults() {
+    return [
       { source: 'A', target: 'B', confidence: 0.95 },
       { source: 'B', target: 'C', confidence: 0.88 },
       { source: 'C', target: 'D', confidence: 0.92 },
       { source: 'E', target: 'F', confidence: 0.89 },
       { source: 'G', target: 'F', confidence: 0.79 },
     ];
-    
-    // Apply transitive closure to find connected components
-    const clusters = this.findConnectedComponents(directMatches);
-    
-    // Calculate metrics for each cluster
-    return clusters.map((cluster, index) => {
-      const avgConfidence = this.calculateAverageConfidence(cluster, directMatches);
-      return {
-        id: `cluster${index + 1}`,
-        records: cluster.length,
-        nodes: cluster,
-        metrics: {
-          avgConfidence,
-          density: this.calculateClusterDensity(cluster.length),
-          directEdges: this.countDirectEdges(cluster, directMatches),
-          transitiveEdges: this.countTransitiveEdges(cluster, directMatches)
-        }
-      };
-    });
   }
-  
+
   /**
    * Finds connected components in a graph (clusters of records)
    * @private
@@ -156,9 +152,9 @@ class TransitiveMatcher {
     
     for (const node of graph.keys()) {
       if (!visited.has(node)) {
-        const cluster = [];
-        this.dfs(node, graph, visited, cluster);
-        clusters.push(cluster);
+        const records = [];
+        this.dfs(node, graph, visited, records);
+        clusters.push({ records }); // Changed to return cluster object with records
       }
     }
     
@@ -192,9 +188,9 @@ class TransitiveMatcher {
    * @param {Array} matches - Array of match objects
    * @returns {number} - Average confidence value
    */
-  calculateAverageConfidence(cluster, matches) {
+  calculateAverageConfidence(clusterRecords, matches) {
     const clusterMatches = matches.filter(match =>
-      cluster.includes(match.source) && cluster.includes(match.target)
+      clusterRecords.includes(match.source) && clusterRecords.includes(match.target)
     );
     
     if (clusterMatches.length === 0) return 0;
@@ -222,9 +218,9 @@ class TransitiveMatcher {
    * @param {Array} matches - Array of match objects
    * @returns {number} - Number of direct edges
    */
-  countDirectEdges(cluster, matches) {
+  countDirectEdges(clusterRecords, matches) {
     return matches.filter(match =>
-      cluster.includes(match.source) && cluster.includes(match.target)
+      clusterRecords.includes(match.source) && clusterRecords.includes(match.target)
     ).length;
   }
   
@@ -235,9 +231,9 @@ class TransitiveMatcher {
    * @param {Array} matches - Array of match objects
    * @returns {number} - Number of transitive edges
    */
-  countTransitiveEdges(cluster, matches) {
-    const directEdges = this.countDirectEdges(cluster, matches);
-    const possibleEdges = (cluster.length * (cluster.length - 1)) / 2;
+  countTransitiveEdges(clusterRecords, matches) {
+    const directEdges = this.countDirectEdges(clusterRecords, matches);
+    const possibleEdges = (clusterRecords.length * (clusterRecords.length - 1)) / 2;
     return Math.max(0, possibleEdges - directEdges);
   }
   
@@ -247,21 +243,47 @@ class TransitiveMatcher {
    * @param {Array} clusters - Array of cluster objects
    * @returns {Object} - Metrics object
    */
-  generateMetrics(clusters) {
+  generateMetrics(clusters, matches) {
     const totalClusters = clusters.length;
-    const totalRecordsInClusters = clusters.reduce((sum, cluster) => sum + cluster.records, 0);
+    const totalRecordsInClusters = clusters.reduce((sum, cluster) => sum + cluster.records.length, 0);
     const averageClusterSize = totalClusters > 0 ? totalRecordsInClusters / totalClusters : 0;
     const largestClusterSize = clusters.length > 0 ?
-      Math.max(...clusters.map(cluster => cluster.records)) : 0;
-    
-    return {
-      totalClusters,
-      totalRecordsInClusters,
-      averageClusterSize,
-      largestClusterSize,
-      transitivityScore: this.calculateTransitivityScore(clusters),
-      clusterSizeDistribution: this.calculateClusterSizeDistribution(clusters)
+      Math.max(...clusters.map(cluster => cluster.records.length)) : 0;
+
+    const metrics = {
+      totalClusters: totalClusters,
+      totalRecordsInClusters: totalRecordsInClusters,
+      averageClusterSize: averageClusterSize,
+      largestClusterSize: largestClusterSize,
+      clusterDensities: [],
+      averageConfidences: [],
+      directEdgesCounts: [],
+      transitiveEdgesCounts: [],
     };
+
+    clusters.forEach(cluster => {
+      const clusterSize = cluster.records.length;
+      const clusterDensity = this.calculateClusterDensity(clusterSize);
+      const avgConfidence = this.calculateAverageConfidence(cluster.records, matches); // Use actual matches
+      const directEdges = this.countDirectEdges(cluster.records, matches); // Use actual matches
+      const transitiveEdges = this.countTransitiveEdges(cluster.records, matches); // Use actual matches
+
+
+      metrics.clusterDensities.push(clusterDensity);
+      metrics.averageConfidences.push(avgConfidence);
+      metrics.directEdgesCounts.push(directEdges);
+      metrics.transitiveEdgesCounts.push(transitiveEdges);
+    });
+
+    metrics.averageClusterDensity = metrics.clusterDensities.reduce((sum, density) => sum + density, 0) / totalClusters || 0;
+    metrics.averageAverageConfidence = metrics.averageConfidences.reduce((sum, confidence) => sum + confidence, 0) / totalClusters || 0;
+    metrics.totalDirectEdges = metrics.directEdgesCounts.reduce((sum, count) => sum + count, 0);
+    metrics.totalTransitiveEdges = metrics.transitiveEdgesCounts.reduce((sum, count) => sum + count, 0);
+    metrics.transitivityScore = this.calculateTransitivityScore(clusters);
+    metrics.clusterSizeDistribution = this.calculateClusterSizeDistribution(clusters);
+
+
+    return metrics;
   }
 
   /**
@@ -269,106 +291,50 @@ class TransitiveMatcher {
    * @returns {string} SQL statement for transitive closure
    */
   generateSql() {
-    // Generate comprehensive SQL for transitive closure algorithm
-    // This uses Common Table Expressions (CTEs) and a recursive query pattern
     // to find all connected components in the match graph
+    // This uses Common Table Expressions (CTEs) and a recursive query pattern
     const sql = `
-      -- Step 1: Filter matches by confidence threshold
-      WITH filtered_matches AS (
+      WITH RECURSIVE TransitiveClosure AS (
         SELECT
-          source_record_id,
-          target_record_id,
-          match_confidence
+          ${this.sourceIdField} AS source_record_id,
+          ${this.targetIdField} AS target_record_id,
+          ARRAY[${this.sourceIdField}, ${this.targetIdField}] AS path,
+          1 AS depth
         FROM ${this.matchResultsTable}
-        WHERE match_confidence >= ${this.confidenceThreshold}
-      ),
-      
-      -- Step 2: Create symmetric pairs for undirected graph
-      -- For each A→B, also include B→A to ensure we find all connections
-      symmetric_matches AS (
-        SELECT source_record_id, target_record_id, match_confidence FROM filtered_matches
+        WHERE ${this.confidenceField} >= ${this.confidenceThreshold}
+
         UNION ALL
-        SELECT target_record_id AS source_record_id, source_record_id AS target_record_id, match_confidence
-        FROM filtered_matches
-      ),
-      
-      -- Step 3: Find distinct nodes (unique record IDs)
-      nodes AS (
-        SELECT source_record_id AS record_id FROM symmetric_matches
-        UNION
-        SELECT target_record_id AS record_id FROM symmetric_matches
-      ),
-      
-      -- Step 4: Recursively traverse the graph to find connected components
-      -- This uses a "label propagation" approach where each node starts with
-      -- its own cluster ID and then propagates to neighbors
-      cluster_detection AS (
-        -- Base case: Each record starts in its own cluster with its ID as the cluster ID
+
         SELECT
-          record_id,
-          record_id AS cluster_id,
-          0 AS iteration
-        FROM nodes
-        
-        UNION ALL
-        
-        -- Recursive case: Propagate the minimum cluster ID to neighbors
-        SELECT
-          cd.record_id,
-          LEAST(cd.cluster_id, sm.target_record_id) AS cluster_id,
-          cd.iteration + 1 AS iteration
-        FROM cluster_detection cd
-        JOIN symmetric_matches sm ON cd.record_id = sm.source_record_id
-        WHERE cd.iteration < 10  -- Limit iterations for safety
+          tc.source_record_id,
+          m.target_record_id,
+          tc.path || m.target_record_id,
+          tc.depth + 1
+        FROM TransitiveClosure tc
+        JOIN ${this.matchResultsTable} m ON tc.target_record_id = m.${this.sourceIdField}
+        WHERE m.${this.confidenceField} >= ${this.confidenceThreshold}
+          AND NOT m.target_record_id = ANY(tc.path)
+          AND tc.depth < ${this.maxDepth}
       ),
-      
-      -- Step 5: Find the final cluster ID for each record (minimum ID in connected component)
-      final_clusters AS (
+      Clusters AS (
         SELECT
-          record_id,
-          MIN(cluster_id) OVER (PARTITION BY record_id) AS final_cluster_id
-        FROM cluster_detection
-        WHERE iteration = (SELECT MAX(iteration) FROM cluster_detection)
-      ),
-      
-      -- Step 6: Generate cluster metrics
-      cluster_metrics AS (
-        SELECT
-          final_cluster_id,
-          COUNT(*) AS cluster_size,
-          ARRAY_AGG(record_id) AS cluster_members
-        FROM final_clusters
-        GROUP BY final_cluster_id
+          array_agg(DISTINCT record_id) AS cluster_members,
+          min(record_id) as cluster_id,
+          count(DISTINCT record_id) AS cluster_size
+        FROM (
+          SELECT source_record_id as record_id FROM TransitiveClosure
+          UNION ALL
+          SELECT target_record_id as record_id FROM TransitiveClosure
+        ) AS all_records
+        GROUP BY cluster_id
       )
-      
-      -- Step 7: Output the final results with metrics
       SELECT
-        cm.final_cluster_id AS cluster_id,
-        cm.cluster_size,
-        cm.cluster_members,
-        (
-          SELECT AVG(match_confidence)
-          FROM filtered_matches fm
-          WHERE fm.source_record_id IN UNNEST(cm.cluster_members)
-          AND fm.target_record_id IN UNNEST(cm.cluster_members)
-        ) AS avg_confidence,
-        (
-          SELECT COUNT(*)
-          FROM filtered_matches fm
-          WHERE fm.source_record_id IN UNNEST(cm.cluster_members)
-          AND fm.target_record_id IN UNNEST(cm.cluster_members)
-        ) AS direct_matches,
-        (cm.cluster_size * (cm.cluster_size - 1)) / 2 -
-        (
-          SELECT COUNT(*)
-          FROM filtered_matches fm
-          WHERE fm.source_record_id IN UNNEST(cm.cluster_members)
-          AND fm.target_record_id IN UNNEST(cm.cluster_members)
-        ) AS transitive_matches
-      FROM cluster_metrics cm
-      ORDER BY cluster_size DESC
+          cluster_id,
+          cluster_size,
+          cluster_members
+       FROM Clusters
+       ORDER BY cluster_size DESC
     `;
-    
     return sql;
   }
 
@@ -427,7 +393,7 @@ class TransitiveMatcher {
     
     return {
       counts: distribution,
-      percentages
+      percentages: percentages
     };
   }
   
@@ -453,13 +419,13 @@ class TransitiveMatcher {
         directEdges: clusters.reduce((sum, c) => sum + (c.metrics?.directEdges || 0), 0),
         transitiveEdges: clusters.reduce((sum, c) => sum + (c.metrics?.transitiveEdges || 0), 0),
         avgConfidence: clusters.length > 0 ?
-          (clusters.reduce((sum, c) => sum + (c.metrics?.avgConfidence || 0), 0) / clusters.length).toFixed(2) : 0
+          (clusters.reduce((sum, c) => sum + (c.metrics?.avgConfidence || 0), 0) / clusters.length).toFixed(2) : 0,
       },
       
       // Performance metrics
       performanceMetrics: {
         memoryUsage: this.getMemoryUsage(),
-        executionTime: (Date.now() - (clusters[0]?.timestamp || Date.now())) / 1000
+        executionTime: (Date.now() - (clusters[0]?.timestamp || Date.now())) / 1000,
       }
     };
   }

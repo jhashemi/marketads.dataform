@@ -81,10 +81,14 @@ exports.tests = [
       // Analyze cluster quality using our TransitiveMatcher
       const transitiveMatcherFactory = new TransitiveMatcherFactory();
       const clusterAnalyzer = transitiveMatcherFactory.createTransitiveMatcher({
-        matchResultsTable: 'test_transitive_matches',
-        confidenceThreshold: 0.7
+        matchResultsTable: 'test_transitive_matches', // should be parameters.matchResultsTable
+        confidenceThreshold: 0.7 // should be parameters.confidenceThreshold
       });
       
+      // Override parameters with test context parameters
+      clusterAnalyzer.matchResultsTable = context.parameters.transitiveMatchOutputTable || 'test_transitive_matches';
+      clusterAnalyzer.confidenceThreshold = context.parameters.transitiveConfidenceThreshold || 0.7;
+
       const clusterMetrics = await clusterAnalyzer.getClusterMetrics();
       
       return {

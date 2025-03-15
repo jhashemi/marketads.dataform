@@ -1,0 +1,1394 @@
+openapi: 3.0.3
+info:
+  title: MarketAds Waterfall Matching System API
+  description: API for the MarketAds Waterfall Matching System
+  version: 1.0.0
+  contact:
+    name: MarketAds Support
+    email: support@marketads.com
+servers:
+  - url: https://api.marketads.com/v1
+    description: Production server
+  - url: https://staging-api.marketads.com/v1
+    description: Staging server
+  - url: https://dev-api.marketads.com/v1
+    description: Development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, user, viewer]
+        avatar:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DataSource:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [database, file, api, stream]
+        connectionDetails:
+          type: object
+        status:
+          type: string
+          enum: [active, inactive, error]
+        lastSyncedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+
+    ReferenceTable:
+      type: object
+      required:
+        - id
+        - name
+        - dataSourceId
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        dataSourceId:
+          type: string
+          format: uuid
+        schema:
+          type: object
+        status:
+          type: string
+          enum: [active, inactive, processing, error]
+        rowCount:
+          type: integer
+        lastUpdatedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+
+    MatchingRule:
+      type: object
+      required:
+        - id
+        - name
+        - conditions
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        conditions:
+          type: array
+          items:
+            type: object
+            required:
+              - field
+              - operator
+              - value
+            properties:
+              field:
+                type: string
+              operator:
+                type: string
+                enum: [equals, contains, startsWith, endsWith, regex, fuzzy, greater, less]
+              value:
+                type: string
+              threshold:
+                type: number
+                minimum: 0
+                maximum: 1
+        status:
+          type: string
+          enum: [active, inactive, draft]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+
+    Pipeline:
+      type: object
+      required:
+        - id
+        - name
+        - sourceTableId
+        - referenceTableId
+        - matchingRuleIds
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        sourceTableId:
+          type: string
+          format: uuid
+        referenceTableId:
+          type: string
+          format: uuid
+        matchingRuleIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        configuration:
+          type: object
+        schedule:
+          type: object
+          properties:
+            frequency:
+              type: string
+              enum: [manual, hourly, daily, weekly, monthly]
+            startTime:
+              type: string
+              format: date-time
+        status:
+          type: string
+          enum: [active, inactive, running, completed, failed, scheduled]
+        lastRunAt:
+          type: string
+          format: date-time
+        nextRunAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+
+    PipelineRun:
+      type: object
+      required:
+        - id
+        - pipelineId
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        pipelineId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+          description: Duration in seconds
+        recordsProcessed:
+          type: integer
+        recordsMatched:
+          type: integer
+        matchRate:
+          type: number
+          format: float
+        accuracy:
+          type: number
+          format: float
+        logs:
+          type: array
+          items:
+            type: object
+        createdBy:
+          type: string
+          format: uuid
+
+    MatchResult:
+      type: object
+      required:
+        - id
+        - pipelineRunId
+        - sourceRecordId
+        - referenceRecordId
+        - score
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        pipelineRunId:
+          type: string
+          format: uuid
+        sourceRecordId:
+          type: string
+        referenceRecordId:
+          type: string
+        matchingRuleId:
+          type: string
+          format: uuid
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        status:
+          type: string
+          enum: [pending, confirmed, rejected, flagged]
+        sourceRecord:
+          type: object
+        referenceRecord:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        reviewedBy:
+          type: string
+          format: uuid
+        reviewedAt:
+          type: string
+          format: date-time
+
+    Notification:
+      type: object
+      required:
+        - id
+        - userId
+        - title
+        - message
+        - type
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+          enum: [success, error, warning, info, message]
+        read:
+          type: boolean
+          default: false
+        metadata:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+
+    AIInsight:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - impact
+        - category
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        impact:
+          type: string
+          enum: [high, medium, low]
+        category:
+          type: string
+          enum: [performance, accuracy, efficiency]
+        metadata:
+          type: object
+        isNew:
+          type: boolean
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+        appliedAt:
+          type: string
+          format: date-time
+
+    PaginatedResponse:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        pagination:
+          type: object
+          required:
+            - total
+            - page
+            - pageSize
+            - totalPages
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            pageSize:
+              type: integer
+            totalPages:
+              type: integer
+
+    DashboardMetrics:
+      type: object
+      properties:
+        totalPipelines:
+          type: integer
+        activePipelines:
+          type: integer
+        completedRuns:
+          type: integer
+        failedRuns:
+          type: integer
+        averageMatchRate:
+          type: number
+          format: float
+        averageAccuracy:
+          type: number
+          format: float
+        processingTime:
+          type: number
+          format: float
+        recordsProcessed:
+          type: integer
+        recordsMatched:
+          type: integer
+        systemStatus:
+          type: string
+          enum: [healthy, degraded, outage]
+        lastUpdated:
+          type: string
+          format: date-time
+
+    SystemStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, outage]
+        components:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+                enum: [operational, degraded, outage]
+              message:
+                type: string
+        uptime:
+          type: number
+          format: float
+        lastIncident:
+          type: string
+          format: date-time
+        lastUpdated:
+          type: string
+          format: date-time
+
+paths:
+  /auth/login:
+    post:
+      summary: User login
+      description: Authenticate a user and return a JWT token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      summary: Refresh token
+      description: Refresh an expired JWT token
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+        '401':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me:
+    get:
+      summary: Get current user
+      description: Get the profile of the currently authenticated user
+      tags:
+        - Users
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /data-sources:
+    get:
+      summary: List data sources
+      description: Get a list of all data sources
+      tags:
+        - Data Sources
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, error]
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [database, file, api, stream]
+      responses:
+        '200':
+          description: List of data sources
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object 
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DataSource'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    post:
+      summary: Create data source
+      description: Create a new data source
+      tags:
+        - Data Sources
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - type
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                type:
+                  type: string
+                  enum: [database, file, api, stream]
+                connectionDetails:
+                  type: object
+      responses:
+        '201':
+          description: Data source created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataSource'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /data-sources/{id}:
+    get:
+      summary: Get data source
+      description: Get a specific data source by ID
+      tags:
+        - Data Sources
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Data source details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataSource'
+        '404':
+          description: Data source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    put:
+      summary: Update data source
+      description: Update an existing data source
+      tags:
+        - Data Sources
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                connectionDetails:
+                  type: object
+                status:
+                  type: string
+                  enum: [active, inactive]
+      responses:
+        '200':
+          description: Data source updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataSource'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Data source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    delete:
+      summary: Delete data source
+      description: Delete a data source
+      tags:
+        - Data Sources
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Data source deleted
+        '404':
+          description: Data source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reference-tables:
+    get:
+      summary: List reference tables
+      description: Get a list of all reference tables
+      tags:
+        - Reference Tables
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: dataSourceId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, processing, error]
+      responses:
+        '200':
+          description: List of reference tables
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ReferenceTable'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    post:
+      summary: Create reference table
+      description: Create a new reference table
+      tags:
+        - Reference Tables
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - dataSourceId
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                dataSourceId:
+                  type: string
+                  format: uuid
+                schema:
+                  type: object
+      responses:
+        '201':
+          description: Reference table created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceTable'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /matching-rules:
+    get:
+      summary: List matching rules
+      description: Get a list of all matching rules
+      tags:
+        - Matching Rules
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, draft]
+      responses:
+        '200':
+          description: List of matching rules
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MatchingRule'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    post:
+      summary: Create matching rule
+      description: Create a new matching rule
+      tags:
+        - Matching Rules
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - conditions
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - field
+                      - operator
+                      - value
+                    properties:
+                      field:
+                        type: string
+                      operator:
+                        type: string
+                        enum: [equals, contains, startsWith, endsWith, regex, fuzzy, greater, less]
+                      value:
+                        type: string
+                      threshold:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                status:
+                  type: string
+                  enum: [active, inactive, draft]
+                  default: draft
+      responses:
+        '201':
+          description: Matching rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingRule'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /pipelines:
+    get:
+      summary: List pipelines
+      description: Get a list of all pipelines
+      tags:
+        - Pipelines
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, running, completed, failed, scheduled]
+      responses:
+        '200':
+          description: List of pipelines
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Pipeline'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    post:
+      summary: Create pipeline
+      description: Create a new pipeline
+      tags:
+        - Pipelines
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - sourceTableId
+                - referenceTableId
+                - matchingRuleIds
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                sourceTableId:
+                  type: string
+                  format: uuid
+                referenceTableId:
+                  type: string
+                  format: uuid
+                matchingRuleIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                configuration:
+                  type: object
+                schedule:
+                  type: object
+                  properties:
+                    frequency:
+                      type: string
+                      enum: [manual, hourly, daily, weekly, monthly]
+                    startTime:
+                      type: string
+                      format: date-time
+      responses:
+        '201':
+          description: Pipeline created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pipeline'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /pipelines/{id}/run:
+    post:
+      summary: Run pipeline
+      description: Trigger a pipeline run
+      tags:
+        - Pipelines
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Pipeline run triggered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineRun'
+        '404':
+          description: Pipeline not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Pipeline already running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /match-results:
+    get:
+      summary: List match results
+      description: Get a list of match results
+      tags:
+        - Match Results
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: pipelineRunId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, rejected, flagged]
+        - name: minScore
+          in: query
+          schema:
+            type: number
+            minimum: 0
+            maximum: 1
+      responses:
+        '200':
+          description: List of match results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MatchResult'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /match-results/{id}/review:
+    post:
+      summary: Review match result
+      description: Update the status of a match result after review
+      tags:
+        - Match Results
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [confirmed, rejected, flagged]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Match result updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchResult'
+        '404':
+          description: Match result not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /dashboard/metrics:
+    get:
+      summary: Get dashboard metrics
+      description: Get metrics for the dashboard
+      tags:
+        - Dashboard
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardMetrics'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /system/status:
+    get:
+      summary: Get system status
+      description: Get the current system status
+      tags:
+        - System
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: System status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /notifications:
+    get:
+      summary: Get notifications
+      description: Get notifications for the current user
+      tags:
+        - Notifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: read
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /notifications/{id}/read:
+    post:
+      summary: Mark notification as read
+      description: Mark a notification as read
+      tags:
+        - Notifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '404':
+          description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ai/insights:
+    get:
+      summary: Get AI insights
+      description: Get AI-generated insights for improving matching
+      tags:
+        - AI
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of AI insights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AIInsight'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ai/insights/{id}/apply:
+    post:
+      summary: Apply AI insight
+      description: Apply an AI-generated insight
+      tags:
+        - AI
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Insight applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIInsight'
+        '404':
+          description: Insight not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+security:
+  - bearerAuth: []
+
