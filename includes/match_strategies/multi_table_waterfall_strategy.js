@@ -8,6 +8,8 @@
  */
 
 const { WaterfallMatchStrategy } = require('./waterfall_match_strategy');
+const { validateParameters } = require('../validation/parameter_validator');
+const { ValidationError } = require('../validation/validation_errors');
 
 /**
  * Multi-Table Waterfall Match Strategy
@@ -20,19 +22,26 @@ class MultiTableWaterfallStrategy extends WaterfallMatchStrategy {
    * @param {Array<Object>} options.referenceTables - Reference tables in priority order
    * @param {Object} options.matchingRules - Matching rules to apply for each table
    * @param {Object} options.thresholds - Match confidence thresholds
-   * @param {Object} options.fieldMappings - Field mappings between tables
-   * @param {boolean} options.allowMultipleMatches - Whether to allow multiple matches per source record
-   * @param {number} options.maxMatches - Maximum number of matches to return per source record
-   * @param {string} options.confidenceField - Field to store match confidence
+   * @param {Object} [options.fieldMappings] - Field mappings between tables
+   * @param {Object} [options.requiredFields] - Required fields for each reference table
+   * @param {Object} [options.confidenceMultipliers] - Confidence multipliers for each reference table
+   * @param {boolean} [options.allowMultipleMatches=false] - Whether to allow multiple matches per source record
+   * @param {number} [options.maxMatches=1] - Maximum number of matches to return per source record
+   * @param {string} [options.confidenceField='confidence'] - Field to store match confidence
    */
   constructor(options = {}) {
     super(options);
+    
+    // Validate options with comprehensive parameter validation
+    this._validateOptions(options);
     
     // Override the strategy name
     this.name = 'multi_table_waterfall';
     
     // Additional options specific to multi-table strategy
     this.fieldMappings = options.fieldMappings || {};
+    this.requiredFields = options.requiredFields || {};
+    this.confidenceMultipliers = options.confidenceMultipliers || {};
     this.allowMultipleMatches = options.allowMultipleMatches || false;
     this.maxMatches = options.maxMatches || 1;
     this.confidenceField = options.confidenceField || 'confidence';
@@ -42,8 +51,8 @@ class MultiTableWaterfallStrategy extends WaterfallMatchStrategy {
       this.referenceTables = this.referenceTables.map(table => ({
         ...table,
         tablePriority: table.tablePriority || table.priority || 1,
-        confidenceMultiplier: table.confidenceMultiplier || 1.0,
-        requiredFields: table.requiredFields || []
+        confidenceMultiplier: this._getConfidenceMultiplier(table.id, table.confidenceMultiplier),
+        requiredFields: this._getRequiredFields(table.id, table.requiredFields || [])
       }));
       
       // Sort tables by priority to optimize matching (highest priority first)
@@ -58,39 +67,88 @@ class MultiTableWaterfallStrategy extends WaterfallMatchStrategy {
   }
   
   /**
-   * Initialize the SQL fragment cache
+   * Validate options with comprehensive parameter validation
    * @private
+   * @param {Object} options - Strategy options
+   * @throws {ValidationError} If validation fails
    */
-  _initializeCache() {
-    this._cache = {
-      // Cache for join conditions by rule set
-      joinConditions: new Map(),
-      // Cache for required fields conditions by table
-      requiredFieldsConditions: new Map(),
-      // Cache for field mapping SELECT clauses by table
-      fieldMappingSelects: new Map(),
-      // Cache for generated match CTEs
-      matchCTEs: new Map(),
-      // Cache for complete SQL by source table
-      generatedSQL: new Map()
+  _validateOptions(options) {
+    const validationRules = {
+      required: ['referenceTables', 'matchingRules', 'thresholds'],
+      types: {
+        referenceTables: 'array',
+        matchingRules: 'object',
+        thresholds: 'object',
+        fieldMappings: 'object',
+        requiredFields: 'object',
+        confidenceMultipliers: 'object',
+        allowMultipleMatches: 'boolean',
+        maxMatches: 'number',
+        confidenceField: 'string'
+      },
+      defaults: {
+        fieldMappings: {},
+        requiredFields: {},
+        confidenceMultipliers: {},
+        allowMultipleMatches: false,
+        maxMatches: 1,
+        confidenceField: 'confidence'
+      },
+      messages: {
+        referenceTables: 'Reference tables are required for multi-table waterfall matching',
+        matchingRules: 'Matching rules are required for multi-table waterfall matching',
+        thresholds: 'Confidence thresholds are required for multi-table waterfall matching'
+      }
     };
+
+    validateParameters(options, validationRules, 'MultiTableWaterfallStrategy');
+
+    // Additional validation for nested structures
+    if (options.referenceTables.length === 0) {
+      throw new ValidationError('At least one reference table is required', 'referenceTables');
+    }
+
+    // Validate each reference table
+    options.referenceTables.forEach((table, index) => {
+      if (!table.id) {
+        throw new ValidationError(`Reference table at index ${index} is missing an id`, 'referenceTables');
+      }
+      if (!table.table) {
+        throw new ValidationError(`Reference table '${table.id}' is missing a table name`, 'referenceTables');
+      }
+    });
+
+    // Validate thresholds
+    const { thresholds } = options;
+    if (!thresholds.high || !thresholds.medium || !thresholds.low) {
+      throw new ValidationError('Thresholds must include high, medium, and low values', 'thresholds');
+    }
   }
   
   /**
-   * Validate that we have matching rules for each reference table
+   * Get confidence multiplier for a reference table
    * @private
+   * @param {string} tableId - Reference table ID
+   * @param {number} [defaultMultiplier=1.0] - Default multiplier if not specified
+   * @returns {number} Confidence multiplier
    */
-  _validateMatchingRules() {
-    if (!this.matchingRules || Object.keys(this.matchingRules).length === 0) {
-      throw new Error('No matching rules defined for any reference table');
+  _getConfidenceMultiplier(tableId, defaultMultiplier = 1.0) {
+    if (this.confidenceMultipliers[tableId]) {
+      const multiplier = parseFloat(this.confidenceMultipliers[tableId]);
+      return isNaN(multiplier) ? defaultMultiplier : multiplier;
     }
-    
-    // Check each reference table has matching rules
-    this.referenceTables.forEach(refTable => {
-      if (!this.matchingRules[refTable.id] && !this.matchingRules.default) {
-        throw new Error(`No matching rules defined for reference table ${refTable.id}`);
-      }
-    });
+    return parseFloat(defaultMultiplier) || 1.0;
+  }
+  
+  /**
+   * Get required fields for a reference table
+   * @private
+   * @param {string} tableId - Reference table ID
+   * @param {Array<string>} defaultFields - Default required fields
+   * @returns {Array<string>} Required fields
+   */
+  _getRequiredFields(tableId, defaultFields = []) {
+    return this.requiredFields[tableId] || defaultFields || [];
   }
   
   /**
@@ -102,7 +160,7 @@ class MultiTableWaterfallStrategy extends WaterfallMatchStrategy {
     const { sourceTable, sourceAlias = 's', targetAlias = 't', options = {} } = context || {};
     
     if (!sourceTable || this.referenceTables.length === 0) {
-      throw new Error('Source table and reference tables are required for multi-table waterfall matching');
+      throw new ValidationError('Source table and reference tables are required for multi-table waterfall matching', 'generateSql');
     }
     
     // Create a cache key for this specific context
@@ -131,7 +189,7 @@ WITH source_data AS (
     
     // Generate SQL for each reference table match
     const matchCTEs = [];
-    const batchSize = 5; // Process reference tables in batches for better memory usage
+    const batchSize = 5;
     
     // Process reference tables in batches to optimize memory usage for large numbers of tables
     for (let i = 0; i < this.referenceTables.length; i += batchSize) {
@@ -154,7 +212,7 @@ WITH source_data AS (
         const rules = this.matchingRules[refTable.id] || this.matchingRules.default;
         
         if (!rules) {
-          throw new Error(`No matching rules defined for reference table ${refTable.id}`);
+          throw new ValidationError(`No matching rules defined for reference table ${refTable.id}`, 'matchingRules');
         }
         
         // Create join conditions incorporating required fields
@@ -220,23 +278,6 @@ ${matchCTE} AS (
     this._cache.generatedSQL.set(cacheKey, sql);
     
     return sql;
-  }
-  
-  /**
-   * Normalize thresholds to ensure they're valid numbers
-   * @private
-   * @param {Object} thresholds - Threshold values
-   */
-  _normalizeThresholds(thresholds) {
-    // Ensure thresholds are valid numbers between 0 and 1
-    thresholds.high = Math.min(1, Math.max(0, parseFloat(thresholds.high) || 0.85));
-    thresholds.medium = Math.min(1, Math.max(0, parseFloat(thresholds.medium) || 0.70));
-    thresholds.low = Math.min(1, Math.max(0, parseFloat(thresholds.low) || 0.55));
-    
-    // Ensure thresholds are in descending order
-    thresholds.high = Math.max(thresholds.high, thresholds.medium, thresholds.low);
-    thresholds.medium = Math.min(thresholds.high, Math.max(thresholds.medium, thresholds.low));
-    thresholds.low = Math.min(thresholds.high, thresholds.medium, thresholds.low);
   }
   
   /**
@@ -347,151 +388,110 @@ WHERE match_rank = 1
   }
   
   /**
-   * Generate enhanced join condition with additional blocking fields
+   * Generate enhanced SQL for field mapping from target table
+   * @private
+   * @param {Object} refTable - Reference table configuration
+   * @param {string} targetAlias - Target table alias
+   * @returns {string} SQL for field mapping
+   */
+  _generateFieldMappingSelect(refTable, targetAlias) {
+    // Get table-specific field mappings if available
+    const mappings = this.fieldMappings[refTable.id] || [];
+    
+    if (mappings.length === 0) {
+      return `${targetAlias}.*`;
+    }
+    
+    const mappingExpressions = mappings.map(mapping => {
+      // Handle both simple field mappings and complex expressions
+      if (mapping.expression) {
+        return `${mapping.expression} AS ${this._escapeFieldName(mapping.as || 'expr')}`;
+      } else if (mapping.sourceField && mapping.targetField) {
+        return `COALESCE(${targetAlias}.${this._escapeFieldName(mapping.sourceField)}, NULL) AS ${this._escapeFieldName(mapping.targetField)}`;
+      }
+      return null;
+    }).filter(Boolean);
+    
+    if (mappingExpressions.length === 0) {
+      return `${targetAlias}.*`;
+    }
+    
+    return `${targetAlias}.*, ${mappingExpressions.join(', ')}`;
+  }
+  
+  /**
+   * Generate required fields condition for WHERE clause
+   * @private
+   * @param {Object} refTable - Reference table configuration
+   * @param {string} sourceAlias - Source table alias
+   * @param {string} targetAlias - Target table alias
+   * @returns {string|null} SQL for required fields condition or null if none
+   */
+  _generateRequiredFieldsCondition(refTable, sourceAlias, targetAlias) {
+    const requiredFields = refTable.requiredFields || [];
+    
+    if (requiredFields.length === 0) {
+      return null;
+    }
+    
+    const conditions = requiredFields.map(field => {
+      // Determine if field is in source or target table
+      if (field.includes(':')) {
+        const [tableType, fieldName] = field.split(':');
+        const alias = tableType.toLowerCase() === 'source' ? sourceAlias : targetAlias;
+        return `${alias}.${this._escapeFieldName(fieldName)} IS NOT NULL`;
+      }
+      
+      // Default is to check field in target table
+      return `${targetAlias}.${this._escapeFieldName(field)} IS NOT NULL`;
+    });
+    
+    return `(${conditions.join(' AND ')})`;
+  }
+  
+  /**
+   * Generate an enhanced join condition that incorporates blocking rules
    * @private
    * @param {Object} rules - Matching rules
    * @param {Object} refTable - Reference table configuration
    * @param {string} sourceAlias - Source table alias
    * @param {string} targetAlias - Target table alias
-   * @returns {string} SQL join condition
+   * @returns {string} JOIN condition SQL
    */
   _generateEnhancedJoinCondition(rules, refTable, sourceAlias, targetAlias) {
-    // Create a cache key for this specific join condition
-    const cacheKey = `${refTable.id}:${JSON.stringify(rules)}:${sourceAlias}:${targetAlias}`;
-    
-    // Check if we already have a cached join condition
-    if (this._cache.joinConditions.has(cacheKey)) {
-      return this._cache.joinConditions.get(cacheKey);
+    if (!rules.blocking || rules.blocking.length === 0) {
+      // Default to true if no blocking rules (performance warning)
+      console.warn(`Warning: No blocking rules defined for ${refTable.id}. This will result in a cross join.`);
+      return 'TRUE';
     }
     
-    // Start with base join condition from parent class or overridden method
-    const baseJoinCondition = this._generateJoinCondition(rules, sourceAlias, targetAlias);
+    // Create join conditions from blocking rules
+    const conditions = rules.blocking.map(block => {
+      const { sourceField, targetField, method = 'exact', exact = true } = block;
+      
+      if (!sourceField || !targetField) {
+        throw new ValidationError(`Invalid blocking rule: source and target fields are required`, 'blockingRule');
+      }
+      
+      if (exact || method === 'exact') {
+        return `${sourceAlias}.${this._escapeFieldName(sourceField)} = ${targetAlias}.${this._escapeFieldName(targetField)}`;
+      } else if (method === 'prefix') {
+        return `STARTS_WITH(${sourceAlias}.${this._escapeFieldName(sourceField)}, ${targetAlias}.${this._escapeFieldName(targetField)})`;
+      } else if (method === 'contains') {
+        return `STRPOS(${sourceAlias}.${this._escapeFieldName(sourceField)}, ${targetAlias}.${this._escapeFieldName(targetField)}) > 0`;
+      } else if (method === 'soundex') {
+        return `SOUNDEX(${sourceAlias}.${this._escapeFieldName(sourceField)}) = SOUNDEX(${targetAlias}.${this._escapeFieldName(targetField)})`;
+      }
+      
+      // Default to exact match
+      return `${sourceAlias}.${this._escapeFieldName(sourceField)} = ${targetAlias}.${this._escapeFieldName(targetField)}`;
+    });
     
-    // Add any table-specific blocking conditions
-    const tableBlockingConditions = refTable.blockingConditions || [];
-    
-    if (tableBlockingConditions.length === 0) {
-      // Cache and return the base condition
-      this._cache.joinConditions.set(cacheKey, baseJoinCondition);
-      return baseJoinCondition;
-    }
-    
-    const additionalConditions = tableBlockingConditions
-      .map(condition => {
-        // Handle different types of blocking conditions
-        if (typeof condition === 'string') {
-          // Raw SQL condition
-          return condition;
-        } else if (condition.type === 'exact') {
-          return `${sourceAlias}.${this._escapeFieldName(condition.sourceField)} = ${targetAlias}.${this._escapeFieldName(condition.targetField)}`;
-        } else if (condition.type === 'null_safe') {
-          return `${sourceAlias}.${this._escapeFieldName(condition.sourceField)} <=> ${targetAlias}.${this._escapeFieldName(condition.targetField)}`;
-        } else {
-          // Default to raw condition if specified
-          return condition.condition || 'TRUE';
-        }
-      })
-      .join(' AND ');
-    
-    const enhancedCondition = `${baseJoinCondition} AND ${additionalConditions}`;
-    
-    // Cache the result
-    this._cache.joinConditions.set(cacheKey, enhancedCondition);
-    
-    return enhancedCondition;
+    return conditions.join(' AND ');
   }
   
   /**
-   * Generate required fields condition
-   * @private
-   * @param {Object} refTable - Reference table configuration
-   * @param {string} sourceAlias - Source table alias
-   * @param {string} targetAlias - Target table alias
-   * @returns {string} SQL condition or empty string
-   */
-  _generateRequiredFieldsCondition(refTable, sourceAlias, targetAlias) {
-    if (!refTable.requiredFields || refTable.requiredFields.length === 0) {
-      return '';
-    }
-    
-    // Create a cache key for this specific required fields condition
-    const cacheKey = `${refTable.id}:${sourceAlias}:${targetAlias}`;
-    
-    // Check if we already have a cached condition
-    if (this._cache.requiredFieldsConditions.has(cacheKey)) {
-      return this._cache.requiredFieldsConditions.get(cacheKey);
-    }
-    
-    const condition = refTable.requiredFields
-      .map(field => {
-        if (typeof field === 'string') {
-          // Simple required field (must not be null)
-          return `${targetAlias}.${this._escapeFieldName(field)} IS NOT NULL`;
-        } else if (field.condition) {
-          // Custom condition
-          return field.condition;
-        } else if (field.targetField) {
-          // Source to target field comparison
-          const operator = field.operator || '=';
-          return `${sourceAlias}.${this._escapeFieldName(field.sourceField)} ${operator} ${targetAlias}.${this._escapeFieldName(field.targetField)}`;
-        } else {
-          // Target field not null check
-          return `${targetAlias}.${this._escapeFieldName(field.field)} IS NOT NULL`;
-        }
-      })
-      .join(' AND ');
-    
-    // Cache the result
-    this._cache.requiredFieldsConditions.set(cacheKey, condition);
-    
-    return condition;
-  }
-  
-  /**
-   * Generate field mapping SELECT clause
-   * @private
-   * @param {Object} refTable - Reference table configuration
-   * @param {string} targetAlias - Target table alias
-   * @returns {string} SQL SELECT clause for mapped fields
-   */
-  _generateFieldMappingSelect(refTable, targetAlias) {
-    const mappings = this.fieldMappings[refTable.id] || [];
-    
-    if (mappings.length === 0) {
-      return '';
-    }
-    
-    // Create a cache key for this specific field mapping SELECT clause
-    const cacheKey = `${refTable.id}:${targetAlias}`;
-    
-    // Check if we already have a cached SELECT clause
-    if (this._cache.fieldMappingSelects.has(cacheKey)) {
-      return this._cache.fieldMappingSelects.get(cacheKey);
-    }
-    
-    const select = mappings
-      .map(mapping => {
-        if (typeof mapping === 'string') {
-          // Simple field name mapping (same name)
-          return `${targetAlias}.${this._escapeFieldName(mapping)} AS ${this._escapeFieldName(mapping)}`;
-        } else if (mapping.expression) {
-          // Expression-based mapping
-          return `${mapping.expression} AS ${this._escapeFieldName(mapping.as || mapping.targetField)}`;
-        } else {
-          // Source to target field mapping with COALESCE to handle missing fields
-          return `COALESCE(${targetAlias}.${this._escapeFieldName(mapping.sourceField)}, NULL) AS ${this._escapeFieldName(mapping.targetField)}`;
-        }
-      })
-      .join(',\n    ');
-    
-    // Cache the result
-    this._cache.fieldMappingSelects.set(cacheKey, select);
-    
-    return select;
-  }
-  
-  /**
-   * Escape field names that contain special characters
+   * Escape field names to handle special characters and keywords
    * @private
    * @param {string} fieldName - Field name to escape
    * @returns {string} Escaped field name
@@ -499,57 +499,47 @@ WHERE match_rank = 1
   _escapeFieldName(fieldName) {
     if (!fieldName) return 'id';
     
-    // If the field name contains special characters, escape it with backticks
+    // If the field name contains special characters, escape it with backticks for BigQuery
     return fieldName.match(/[-\s.]/) ? `\`${fieldName}\`` : fieldName;
   }
   
   /**
-   * Override the base class method to handle special characters in field names
+   * Normalize thresholds to ensure valid values in descending order
    * @private
-   * @param {Object} rules - Matching rules
-   * @param {string} sourceAlias - Source table alias
-   * @param {string} targetAlias - Target table alias
-   * @returns {string} SQL join condition
+   * @param {Object} thresholds - Threshold values object
    */
-  _generateJoinCondition(rules, sourceAlias, targetAlias) {
-    // If no rules or no blocking rules, return TRUE (cross join)
-    if (!rules || !rules.blocking || !Array.isArray(rules.blocking) || rules.blocking.length === 0) {
-      return 'TRUE';
-    }
+  _normalizeThresholds(thresholds) {
+    // Ensure thresholds are valid numbers between 0 and 1
+    thresholds.high = Math.min(1, Math.max(0, parseFloat(thresholds.high) || 0.85));
+    thresholds.medium = Math.min(1, Math.max(0, parseFloat(thresholds.medium) || 0.70));
+    thresholds.low = Math.min(1, Math.max(0, parseFloat(thresholds.low) || 0.55));
     
-    return rules.blocking
-      .map(rule => {
-        // Check if custom condition is provided
-        if (rule.condition) {
-          return rule.condition;
-        }
-        
-        // Get field names and escape them if needed
-        const sourceField = this._escapeFieldName(rule.sourceField);
-        const targetField = this._escapeFieldName(rule.targetField);
-        
-        // Check if exact match or other type
-        if (rule.exact) {
-          return `${sourceAlias}.${sourceField} = ${targetAlias}.${targetField}`;
-        } else if (rule.method === 'soundex') {
-          return `SOUNDEX(${sourceAlias}.${sourceField}) = SOUNDEX(${targetAlias}.${targetField})`;
-        } else if (rule.method === 'substring') {
-          const length = rule.length || 3;
-          return `SUBSTRING(${sourceAlias}.${sourceField}, 1, ${length}) = SUBSTRING(${targetAlias}.${targetField}, 1, ${length})`;
-        } else {
-          // Default to equality
-          return `${sourceAlias}.${sourceField} = ${targetAlias}.${targetField}`;
-        }
-      })
-      .join(' AND ');
+    // Ensure thresholds are in descending order
+    thresholds.high = Math.max(thresholds.high, thresholds.medium, thresholds.low);
+    thresholds.medium = Math.min(thresholds.high, Math.max(thresholds.medium, thresholds.low));
+    thresholds.low = Math.min(thresholds.high, thresholds.medium, thresholds.low);
   }
   
   /**
-   * Clear the SQL fragment cache
-   * This can be useful when configuration changes
+   * Get source key fields for partitioning
+   * @private
+   * @param {string} prefix - Prefix for source key fields
+   * @returns {string} Source key fields SQL
    */
-  clearCache() {
-    this._initializeCache();
+  _getSourceKeyFields(prefix) {
+    // Dynamic implementation based on source key fields
+    return 'id'; // Default for now, can be enhanced to use configuration
+  }
+  
+  /**
+   * Initialize cache for SQL fragments
+   * @private
+   */
+  _initializeCache() {
+    this._cache = {
+      matchCTEs: new Map(),
+      generatedSQL: new Map()
+    };
   }
 }
 

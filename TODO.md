@@ -332,11 +332,11 @@ By following this TDD-based plan, you will address the remaining issues systemat
 - ✅ Update multi-table waterfall tests to use the new test framework
 - ✅ Fix multi-table test factory to use class-based factory pattern
 - ✅ Update multi-table validators to use ValidationError
-- ⬜ Add support for custom field mappings
-- ⬜ Add support for confidence multipliers
-- ⬜ Add support for required fields
-- ⬜ Add support for multiple matches
-- ⬜ Add comprehensive validation
+- ✅ Add support for custom field mappings
+- ✅ Add support for confidence multipliers
+- ✅ Add support for required fields
+- ✅ Add support for multiple matches
+- ✅ Add comprehensive validation
 
 ## TransitiveMatcher
 - ✅ Implement `simulateTransitiveClosure(matches, options)` function
@@ -347,11 +347,11 @@ By following this TDD-based plan, you will address the remaining issues systemat
 - ✅ Add comprehensive tests for transitive closure
 
 ## SQL Generation
-- ⬜ Enhance SQL generation for complex matching scenarios
-- ⬜ Add support for custom SQL templates
-- ⬜ Add support for different SQL dialects
-- ⬜ Add support for performance optimizations
-- ⬜ Add comprehensive tests for SQL generation
+- ✅ Enhance SQL generation for complex matching scenarios
+- ✅ Add support for custom SQL templates
+- ✅ Add support for different SQL dialects
+- ✅ Add support for performance optimizations
+- ✅ Add comprehensive tests for SQL generation
 
 ## Documentation
 - ⬜ Update README.md with comprehensive documentation

@@ -11,6 +11,10 @@
 - Fixed multi-table waterfall tests to use the new test framework
 - Updated multi-table test factory to use class-based factory pattern
 - Updated multi-table validators to use ValidationError
+- Implemented SQL generation features with support for different dialects (BigQuery, PostgreSQL, Snowflake)
+- Added custom SQL templates system with template registry
+- Added dialect-specific SQL functions and optimizations
+- Added comprehensive tests for SQL generation features
 
 ### Fixed
 - Fixed issues with transitive closure tests
