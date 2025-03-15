@@ -1,24 +1,33 @@
 /**
  * Authentication Routes
- * Defines routes for user authentication according to OpenAPI contract
+ * Defines API routes for authentication operations
  */
 
 const express = require('express');
-const router = express.Router();
 const authController = require('../controllers/auth_controller');
+const authMiddleware = require('../middleware/auth');
+
+const router = express.Router();
 
 /**
- * @route POST /auth/login
- * @desc Authenticate a user and return a JWT token
+ * @route POST /api/auth/login
+ * @desc Authenticate user and get token
  * @access Public
  */
 router.post('/login', authController.login);
 
 /**
- * @route POST /auth/refresh
- * @desc Refresh an expired JWT token
- * @access Protected
+ * @route POST /api/auth/refresh
+ * @desc Refresh authentication token
+ * @access Public
  */
 router.post('/refresh', authController.refreshToken);
+
+/**
+ * @route GET /api/auth/profile
+ * @desc Get current user profile
+ * @access Private
+ */
+router.get('/profile', authMiddleware.authenticate, authController.getUserProfile);
 
 module.exports = router; 

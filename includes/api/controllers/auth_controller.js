@@ -1,85 +1,132 @@
 /**
  * Authentication Controller
- * Handles authentication-related HTTP requests
+ * Handles HTTP requests for authentication operations
  */
 
 const authService = require('../services/auth_service');
 
 /**
- * Login controller
+ * Handle user login request
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
  */
-async function login(req, res, next) {
+async function login(req, res) {
   try {
+    // Extract credentials from request body
     const { email, password } = req.body;
-    
-    // Validate required fields
+
+    // Validate input
     if (!email || !password) {
       return res.status(400).json({
-        code: 'MISSING_REQUIRED_FIELDS',
-        message: `Missing required fields: ${!email ? 'email' : ''} ${!password ? 'password' : ''}`.trim()
+        status: 'error',
+        message: 'Email and password are required'
       });
     }
-    
-    // Call service to handle login
-    const result = await authService.login(email, password);
-    
-    // Return successful response with token and user data
-    return res.status(200).json(result);
-  } catch (error) {
-    // Handle authentication error
-    if (error.message === 'Invalid credentials') {
+
+    // Authenticate user via auth service
+    try {
+      const result = await authService.login(email, password);
+      
+      // Return successful response with token and user data
+      return res.status(200).json({
+        status: 'success',
+        data: result
+      });
+    } catch (error) {
+      // Handle authentication failure
       return res.status(401).json({
-        code: 'INVALID_CREDENTIALS',
-        message: 'Invalid email or password'
+        status: 'error',
+        message: error.message || 'Invalid credentials'
       });
     }
-    
-    // Pass any other errors to error handler middleware
-    next(error);
+  } catch (error) {
+    // Handle unexpected errors
+    console.error('Login error:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
   }
 }
 
 /**
- * Token refresh controller
+ * Handle token refresh request
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
  */
-async function refreshToken(req, res, next) {
+async function refreshToken(req, res) {
   try {
-    // Extract token from request
-    const token = req.body.token || req.headers.authorization?.split(' ')[1];
-    
+    // Extract token from request body
+    const { token } = req.body;
+
+    // Validate input
     if (!token) {
       return res.status(400).json({
-        code: 'MISSING_TOKEN',
+        status: 'error',
         message: 'Token is required'
       });
     }
-    
-    // Call service to refresh token
-    const result = await authService.refreshToken(token);
-    
-    // Return successful response with new token
-    return res.status(200).json(result);
-  } catch (error) {
-    // Handle token validation error
-    if (error.message.includes('invalid') || error.message.includes('expired')) {
+
+    // Refresh token via auth service
+    try {
+      const result = await authService.refreshToken(token);
+      
+      // Return successful response with new token
+      return res.status(200).json({
+        status: 'success',
+        data: result
+      });
+    } catch (error) {
+      // Handle token refresh failure
       return res.status(401).json({
-        code: 'INVALID_TOKEN',
-        message: 'Invalid or expired token'
+        status: 'error',
+        message: error.message || 'Invalid or expired token'
+      });
+    }
+  } catch (error) {
+    // Handle unexpected errors
+    console.error('Token refresh error:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
+  }
+}
+
+/**
+ * Get current user profile
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+async function getUserProfile(req, res) {
+  try {
+    // User should be attached to request by auth middleware
+    if (!req.user) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Not authenticated'
       });
     }
     
-    // Pass any other errors to error handler middleware
-    next(error);
+    // Return user profile
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        user: req.user
+      }
+    });
+  } catch (error) {
+    // Handle unexpected errors
+    console.error('Get user profile error:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
   }
 }
 
 module.exports = {
   login,
-  refreshToken
+  refreshToken,
+  getUserProfile
 }; 

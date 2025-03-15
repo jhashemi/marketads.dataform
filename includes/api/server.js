@@ -1,104 +1,129 @@
 /**
  * API Server
- * Entry point for the MarketAds API, configured according to OpenAPI contract
+ * Main Express server setup for MarketAds Data Matching API
  */
 
 const express = require('express');
-const bodyParser = require('body-parser');
 const cors = require('cors');
+const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
-const OpenApiValidator = require('express-openapi-validator');
+const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
-const YAML = require('js-yaml');
 
-// Initialize the express app
+// Create Express app
 const app = express();
 
-// Basic middleware
+// Application middleware
+app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(cors());
 
-// Load the OpenAPI specification
-const openApiPath = path.join(__dirname, '../../docs/contracts/openapi_api_contracts.yaml');
-let apiSpec;
+// Load OpenAPI specification if available
+let apiSpec = null;
+const apiSpecPath = path.join(__dirname, '../../docs/contracts/openapi_api_contracts.yaml');
 
 try {
-  // The spec might not exist yet while we're developing, so handle this gracefully
-  if (fs.existsSync(openApiPath)) {
-    apiSpec = YAML.load(fs.readFileSync(openApiPath, 'utf8'));
+  if (fs.existsSync(apiSpecPath)) {
+    apiSpec = yaml.load(fs.readFileSync(apiSpecPath, 'utf8'));
     
     // Serve API documentation
     app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(apiSpec));
     
     // OpenAPI validation middleware
-    app.use(
-      OpenApiValidator.middleware({
-        apiSpec,
-        validateRequests: true,
-        validateResponses: true,
-      })
-    );
+    // Only load if the spec is available
+    try {
+      const { OpenApiValidator } = require('express-openapi-validator');
+      app.use(
+        OpenApiValidator.middleware({
+          apiSpec,
+          validateRequests: true,
+          validateResponses: true
+        })
+      );
+    } catch (validatorError) {
+      console.error('Error loading OpenAPI validator:', validatorError);
+      console.warn('API request/response validation is disabled.');
+    }
+  } else {
+    console.warn('OpenAPI specification file not found:', apiSpecPath);
+    console.warn('API documentation and request/response validation are disabled.');
   }
 } catch (error) {
-  console.error('Error loading OpenAPI spec:', error);
+  console.error('Error loading OpenAPI specification:', error);
+  console.warn('API documentation and request/response validation are disabled.');
 }
 
-// Routes - These will be implemented as we progress
-// Auth routes
-app.use('/auth', require('./routes/auth_routes'));
+// Import routes
+try {
+  const authRoutes = require('./routes/auth_routes');
+  const schemaRoutes = require('./routes/schema_routes');
+  const ruleSelectionRoutes = require('./routes/rule_selection_routes');
+  
+  // API routes
+  app.use('/api/auth', authRoutes);
+  app.use('/api/schemas', schemaRoutes);
+  app.use('/api/rule-selection', ruleSelectionRoutes);
+} catch (routeError) {
+  console.error('Error loading routes:', routeError);
+  console.warn('API routes could not be loaded. The API will only serve the health endpoint.');
+}
 
-// User routes
-app.use('/users', require('./routes/user_routes'));
-
-// Data source routes
-app.use('/data-sources', require('./routes/data_source_routes'));
-
-// Reference table routes
-app.use('/reference-tables', require('./routes/reference_table_routes'));
-
-// Matching rule routes
-app.use('/matching-rules', require('./routes/matching_rule_routes'));
-
-// Pipeline routes
-app.use('/pipelines', require('./routes/pipeline_routes'));
-
-// Match results routes
-app.use('/match-results', require('./routes/match_result_routes'));
-
-// Dashboard routes
-app.use('/dashboard', require('./routes/dashboard_routes'));
-
-// System routes
-app.use('/system', require('./routes/system_routes'));
-
-// Notification routes
-app.use('/notifications', require('./routes/notification_routes'));
-
-// AI insights routes
-app.use('/ai', require('./routes/ai_routes'));
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  // Log the error
-  console.error(err);
-
-  // Format the error response according to the OpenAPI contract
-  res.status(err.status || 500).json({
-    code: err.code || 'INTERNAL_SERVER_ERROR',
-    message: err.message || 'An unexpected error occurred',
-    details: err.details || {}
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'API is operational',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
   });
 });
 
-// Export the app for testing
-module.exports = app;
+// Error handling middleware
+app.use((err, req, res, next) => {
+  // Log error for debugging
+  console.error('API Error:', err);
 
-// Start the server when file is run directly
-if (require.main === module) {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  // OpenAPI validation errors
+  if (err.status && err.errors) {
+    return res.status(err.status).json({
+      status: 'error',
+      message: 'Validation error',
+      errors: err.errors
+    });
+  }
+
+  // Default error response
+  return res.status(err.status || 500).json({
+    status: 'error',
+    message: err.message || 'Internal server error'
   });
-} 
+});
+
+// 404 handler - must be after all other routes
+app.use((req, res) => {
+  res.status(404).json({
+    status: 'error',
+    message: `Endpoint not found: ${req.method} ${req.originalUrl}`
+  });
+});
+
+/**
+ * Start the API server
+ * @param {number} port - Port to listen on
+ * @returns {Promise<Object>} The HTTP server instance
+ */
+function startServer(port = process.env.PORT || 3000) {
+  return new Promise((resolve) => {
+    const server = app.listen(port, () => {
+      console.log(`MarketAds Data Matching API running on port ${port}`);
+      resolve(server);
+    });
+  });
+}
+
+// Export for testing and direct execution
+module.exports = {
+  app,
+  startServer
+}; 

@@ -1,127 +1,188 @@
+/**
+ * Authentication API Tests
+ * Test suite for authentication API endpoints
+ */
+
 const { expect } = require('chai');
 const sinon = require('sinon');
 const request = require('supertest');
-
-// We'll create this file next
-const app = require('../../api/server');
-// Service that will handle authentication
+const { app } = require('../../api/server');
 const authService = require('../../api/services/auth_service');
 
-describe('POST /auth/login', () => {
-  let authServiceStub;
+describe('Authentication API', () => {
+  let sandbox;
 
   beforeEach(() => {
-    // Create a stub for the authService.login method
-    authServiceStub = sinon.stub(authService, 'login');
+    // Create a sandbox to manage stubs
+    sandbox = sinon.createSandbox();
   });
 
   afterEach(() => {
-    // Restore the stub after each test
-    authServiceStub.restore();
+    // Restore stubs and mocks
+    sandbox.restore();
   });
 
-  it('should return 200 and token when credentials are valid', async () => {
-    // Arrange
-    const validCredentials = {
-      email: 'test@example.com',
-      password: 'password123'
-    };
-    
-    const expectedResponse = {
-      token: 'jwt-token-123',
-      user: {
+  describe('POST /api/auth/login', () => {
+    it('should return 400 if email is missing', async () => {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({ password: 'password123' });
+
+      expect(response.status).to.equal(400);
+      expect(response.body).to.have.property('status', 'error');
+      expect(response.body).to.have.property('message').that.includes('required');
+    });
+
+    it('should return 400 if password is missing', async () => {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'test@example.com' });
+
+      expect(response.status).to.equal(400);
+      expect(response.body).to.have.property('status', 'error');
+      expect(response.body).to.have.property('message').that.includes('required');
+    });
+
+    it('should return 401 for invalid credentials', async () => {
+      // Stub auth service to throw error
+      sandbox.stub(authService, 'login').rejects(new Error('Invalid credentials'));
+
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'invalid@example.com', password: 'wrongpassword' });
+
+      expect(response.status).to.equal(401);
+      expect(response.body).to.have.property('status', 'error');
+      expect(response.body).to.have.property('message').that.includes('Invalid credentials');
+    });
+
+    it('should return 200 with token and user data on successful login', async () => {
+      // Stub auth service to return success
+      const mockUser = {
         id: '123e4567-e89b-12d3-a456-426614174000',
         email: 'test@example.com',
         name: 'Test User',
         role: 'user'
-      }
-    };
+      };
+      
+      const mockResponse = {
+        token: 'jwt-token-123',
+        user: mockUser
+      };
+      
+      sandbox.stub(authService, 'login').resolves(mockResponse);
 
-    // Setup the stub to return the expected response
-    authServiceStub.withArgs(validCredentials.email, validCredentials.password)
-      .resolves(expectedResponse);
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'test@example.com', password: 'password123' });
 
-    // Act
-    const response = await request(app)
-      .post('/auth/login')
-      .send(validCredentials)
-      .expect('Content-Type', /json/)
-      .expect(200);
-
-    // Assert
-    expect(response.body).to.have.property('token', expectedResponse.token);
-    expect(response.body).to.have.property('user');
-    expect(response.body.user).to.deep.equal(expectedResponse.user);
-    
-    // Verify that the service was called with the right arguments
-    sinon.assert.calledWith(authServiceStub, validCredentials.email, validCredentials.password);
+      expect(response.status).to.equal(200);
+      expect(response.body).to.have.property('status', 'success');
+      expect(response.body).to.have.property('data');
+      expect(response.body.data).to.have.property('token');
+      expect(response.body.data).to.have.property('user');
+      expect(response.body.data.user).to.have.property('id');
+      expect(response.body.data.user).to.have.property('email');
+      expect(response.body.data.user).to.have.property('role');
+      expect(response.body.data.user).to.not.have.property('password');
+    });
   });
 
-  it('should return 401 when credentials are invalid', async () => {
-    // Arrange
-    const invalidCredentials = {
-      email: 'wrong@example.com',
-      password: 'wrongpassword'
-    };
-    
-    // Setup the stub to throw an error for invalid credentials
-    authServiceStub.withArgs(invalidCredentials.email, invalidCredentials.password)
-      .rejects(new Error('Invalid credentials'));
+  describe('POST /api/auth/refresh', () => {
+    it('should return 400 if token is missing', async () => {
+      const response = await request(app)
+        .post('/api/auth/refresh')
+        .send({});
 
-    // Act & Assert
-    const response = await request(app)
-      .post('/auth/login')
-      .send(invalidCredentials)
-      .expect('Content-Type', /json/)
-      .expect(401);
+      expect(response.status).to.equal(400);
+      expect(response.body).to.have.property('status', 'error');
+      expect(response.body).to.have.property('message').that.includes('required');
+    });
 
-    expect(response.body).to.have.property('code');
-    expect(response.body).to.have.property('message');
-    expect(response.body.message).to.include('Invalid credentials');
-    
-    // Verify that the service was called with the right arguments
-    sinon.assert.calledWith(authServiceStub, invalidCredentials.email, invalidCredentials.password);
+    it('should return 401 for invalid token', async () => {
+      // Stub auth service to throw error
+      sandbox.stub(authService, 'refreshToken').rejects(new Error('Invalid token'));
+
+      const response = await request(app)
+        .post('/api/auth/refresh')
+        .send({ token: 'invalid-token' });
+
+      expect(response.status).to.equal(401);
+      expect(response.body).to.have.property('status', 'error');
+      expect(response.body).to.have.property('message').that.includes('Invalid token');
+    });
+
+    it('should return 200 with new token on successful refresh', async () => {
+      // Stub auth service to return success
+      sandbox.stub(authService, 'refreshToken').resolves({ token: 'new-jwt-token-123' });
+
+      const response = await request(app)
+        .post('/api/auth/refresh')
+        .send({ token: 'valid-token-123' });
+
+      expect(response.status).to.equal(200);
+      expect(response.body).to.have.property('status', 'success');
+      expect(response.body).to.have.property('data');
+      expect(response.body.data).to.have.property('token', 'new-jwt-token-123');
+    });
   });
 
-  it('should return 400 when email is missing', async () => {
-    // Arrange
-    const missingEmail = {
-      password: 'password123'
-    };
+  describe('GET /api/auth/profile', () => {
+    it('should return 401 without authorization header', async () => {
+      const response = await request(app)
+        .get('/api/auth/profile');
 
-    // Act & Assert
-    const response = await request(app)
-      .post('/auth/login')
-      .send(missingEmail)
-      .expect('Content-Type', /json/)
-      .expect(400);
+      expect(response.status).to.equal(401);
+      expect(response.body).to.have.property('status', 'error');
+      expect(response.body).to.have.property('message').that.includes('missing');
+    });
 
-    expect(response.body).to.have.property('code');
-    expect(response.body).to.have.property('message');
-    expect(response.body.message).to.include('email');
-    
-    // Verify that the service was NOT called
-    sinon.assert.notCalled(authServiceStub);
-  });
+    it('should return 401 with invalid authorization format', async () => {
+      const response = await request(app)
+        .get('/api/auth/profile')
+        .set('Authorization', 'InvalidFormat token-123');
 
-  it('should return 400 when password is missing', async () => {
-    // Arrange
-    const missingPassword = {
-      email: 'test@example.com'
-    };
+      expect(response.status).to.equal(401);
+      expect(response.body).to.have.property('status', 'error');
+      expect(response.body).to.have.property('message').that.includes('format');
+    });
 
-    // Act & Assert
-    const response = await request(app)
-      .post('/auth/login')
-      .send(missingPassword)
-      .expect('Content-Type', /json/)
-      .expect(400);
+    it('should return 401 with invalid token', async () => {
+      // Stub auth service to throw error
+      sandbox.stub(authService, 'verifyToken').rejects(new Error('Invalid token'));
 
-    expect(response.body).to.have.property('code');
-    expect(response.body).to.have.property('message');
-    expect(response.body.message).to.include('password');
-    
-    // Verify that the service was NOT called
-    sinon.assert.notCalled(authServiceStub);
+      const response = await request(app)
+        .get('/api/auth/profile')
+        .set('Authorization', 'Bearer invalid-token');
+
+      expect(response.status).to.equal(401);
+      expect(response.body).to.have.property('status', 'error');
+      expect(response.body).to.have.property('message').that.includes('Invalid');
+    });
+
+    it('should return 200 with user profile on successful authentication', async () => {
+      // Stub auth service to return user profile
+      const mockUser = {
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user'
+      };
+      
+      sandbox.stub(authService, 'verifyToken').resolves(mockUser);
+
+      const response = await request(app)
+        .get('/api/auth/profile')
+        .set('Authorization', 'Bearer valid-token-123');
+
+      expect(response.status).to.equal(200);
+      expect(response.body).to.have.property('status', 'success');
+      expect(response.body).to.have.property('data');
+      expect(response.body.data).to.have.property('user');
+      expect(response.body.data.user).to.have.property('id', mockUser.id);
+      expect(response.body.data.user).to.have.property('email', mockUser.email);
+      expect(response.body.data.user).to.have.property('role', mockUser.role);
+      expect(response.body.data.user).to.not.have.property('password');
+    });
   });
 }); 

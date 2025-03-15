@@ -4,241 +4,110 @@ A high-performance, SQL-based record matching and entity resolution system desig
 
 ## Overview
 
-The MarketAds BigQuery Matching System is designed to handle large-scale record matching and entity resolution tasks within the Google Cloud ecosystem. By leveraging BigQuery's powerful SQL engine, the system provides:
+The Intelligent Rule Selection System is a sophisticated component designed to handle large-scale record matching that automatically recommends optimal matching rules based on table schemas, field types, and user-defined goals. It analyzes the structure and content of data tables to suggest the most effective rules for entity matching.
 
-- Fast similarity calculations for record comparison
-- Multiple blocking strategies for performance optimization
-- Phonetic matching algorithms for name and text comparison
-- Address standardization for improved matching accuracy
-- Configurable matching pipelines with weighting and thresholds
+## Key Components
 
-## Key Features
+### 1. Field Type Inference
 
-### SQL-Native Implementation
-- **100% BigQuery SQL**: All matching logic implemented using native BigQuery SQL
-- **Dataform Integration**: Purpose-built for the Dataform workflow environment
-- **High Performance**: Efficiently processes millions of records using BigQuery's distributed computing
+Automatically detects semantic field types beyond basic SQL types:
+- Personal information (firstName, lastName, fullName)
+- Contact information (email, phone, address)
+- Identifiers (customerId, accountNumber)
+- Dates and times (dateOfBirth, createdAt)
 
-### String Similarity Methods
-- **Levenshtein Distance**: Normalized edit distance calculation
-- **Token-Based Similarity**: Word and character n-gram similarity measures
-- **Equality Matching**: Exact matching with standardization
-- **Partial Matching**: Contains and prefix-based matching
+### 2. Goal Analyzer
 
-### Phonetic Algorithms
-- **Soundex**: Native BigQuery implementation
-- **Metaphone**: Custom SQL implementation
-- **Double Metaphone**: Simplified implementation in SQL
-- **NYSIIS**: New York State Identification and Intelligence System algorithm
+Translates user-defined matching goals into rule configurations:
+- HIGH_PRECISION: Find only high-confidence matches
+- HIGH_RECALL: Find as many potential matches as possible
+- BALANCED: Balance precision and recall
+- PERFORMANCE: Optimize for execution speed
+- CUSTOM: User-defined configuration
 
-### Address Standardization
-- **Street Type Normalization**: Standardizes "Street" to "St", "Avenue" to "Ave", etc.
-- **Directional Standardization**: Normalizes "North" to "N", "Southwest" to "SW", etc.
-- **Whitespace Cleaning**: Standardizes whitespace and special characters
+### 3. Rule Optimizer
 
-### Blocking Strategies
-- **Multiple Key Types**: Email domain, name prefix, ZIP code, phone digits, etc.
-- **Phonetic Blocking**: Sound-based blocking for names
-- **Composite Keys**: Combines multiple fields for more specific blocking
-- **Performance Optimization**: Drastically reduces comparison matrix size
+Evaluates different rule combinations to find the optimal set:
+- Analyzes field compatibility and quality
+- Balances effectiveness (precision/recall) with performance
+- Recommends blocking strategies to improve performance
+- Suggests field weights based on uniqueness and quality
 
-### Complete Matching Pipeline
-- **Field Mapping**: Maps fields between different sources
-- **Confidence Scoring**: Weighted similarity scores
-- **Match Classification**: Categorizes matches into tiers (HIGH, MEDIUM, LOW)
-- **Flexible Configuration**: Customizable thresholds and weights
+### 4. Performance Tracker
 
-## Usage Examples
+Monitors rule effectiveness and performance over time:
+- Records precision, recall, and F1 scores
+- Tracks execution time and match counts
+- Identifies most effective fields and rules
+- Provides trend analysis for continuous improvement
 
-The system includes several examples that demonstrate different matching scenarios:
+### 5. API Interface
 
-### Basic Name Matching
+Provides HTTP endpoints and CLI interface for:
+- Recommending rules based on table schemas and goals
+- Applying recommended rules to perform matching
+- Retrieving performance metrics and trends
+- Explaining rule recommendations in human-readable format
 
-```sql
--- From definitions/matching/name_matching.sqlx
--- Matches customers across different data sources using name and contact info
-config {
-  type: "table",
-  name: "matched_customers",
-  description: "Matches customer records across source and target tables"
-}
+## Usage
 
-js {
-  const { generateMatchingPipeline } = require("../includes/sql/similarity_functions");
-  
-  // Define field mappings with weights
-  const fieldMappings = [
-    {
-      sourceField: "first_name",
-      targetField: "firstname",
-      type: "firstName",
-      weight: 1.5
-    },
-    // Additional fields...
-  ];
-  
-  // Return matching SQL
-  return generateMatchingPipeline(
-    "source_customers", 
-    "target_customers", 
-    fieldMappings
-  );
-}
+### API Endpoints
+
+```
+POST /api/rules/recommend
+POST /api/rules/apply
+GET /api/rules/performance
+POST /api/rules/explain
 ```
 
-### Address Matching with Standardization
-
-```sql
--- From definitions/matching/address_matching.sqlx
--- Standardizes addresses before matching
-WITH standardized_source AS (
-  SELECT
-    id,
-    ${standardizeAddressSql('address_line1')} AS std_address,
-    -- Other fields...
-  FROM source_customers
-)
-
--- Then perform matching on standardized addresses
-```
-
-### Efficient Blocking for Large Datasets
-
-```sql
--- From definitions/matching/blocking_keys.sqlx
--- Creates multiple blocking keys for efficient matching
-
--- Standard blocking keys based on direct field values
-WITH standard_blocking_keys AS (
-  -- Various blocking strategies
-),
-
--- Advanced phonetic blocking for names
-phonetic_blocking_keys AS (
-  -- Soundex, Metaphone, etc.
-)
-
--- Combine all blocking keys
-SELECT * FROM standard_blocking_keys
-UNION ALL
-SELECT * FROM phonetic_blocking_keys
-```
-
-## System Architecture
-
-The system is organized into modular JavaScript files that generate SQL:
-
-1. **`includes/sql/similarity_functions.js`**: Core string similarity functions
-2. **`includes/sql/phonetic_functions.js`**: Phonetic algorithm implementations
-3. **`definitions/matching/*.sqlx`**: Dataform SQL definitions that use the functions
-
-## Performance Considerations
-
-- **Blocking**: Always use appropriate blocking strategies for large datasets
-- **Indexes**: Ensure that blocking key columns are properly indexed
-- **Partitioning**: Consider partitioning tables by blocking keys
-- **Threshold Tuning**: Adjust confidence thresholds based on your data quality
-
-## Getting Started
-
-1. **Setup Dataform**: Ensure your Dataform project is configured for BigQuery
-2. **Copy Implementation Files**: Add the SQL utility files to your includes directory
-3. **Create Matching Definitions**: Define your matching queries in `.sqlx` files
-4. **Configure Field Mappings**: Map fields between your source and target tables
-5. **Execute**: Run the Dataform workflow to perform matching
-
-## Configuration Options
-
-The matching pipeline supports various configuration options:
+### Example
 
 ```javascript
-const matchOptions = {
-  // Match quality thresholds
-  thresholds: {
-    high: 0.85,   // High confidence matches (85%+)
-    medium: 0.65, // Medium confidence matches (65-85%)
-    low: 0.45     // Low confidence matches (45-65%)
-  },
-  
-  // Blocking configuration for performance
-  blocking: {
-    field: {
-      source: "email",
-      target: "email_address"
-    },
-    method: "email_domain"
-  }
-};
+// Recommend rules
+const recommendation = await intelligentRuleSelector.recommendRules(
+  'customers',
+  'customer_records',
+  'Find high quality matches with good precision'
+);
+
+// Apply recommended rules
+const result = await intelligentRuleSelector.applyRecommendedRules(
+  recommendation
+);
+
+// Get explanation
+const explanation = intelligentRuleSelector.explainRecommendation(
+  recommendation
+);
+
+// Get performance report
+const report = await intelligentRuleSelector.getPerformanceReport(30); // last 30 days
 ```
 
-## Semantic Type Mapping
+## Benefits
 
-The system utilizes semantic type mapping to improve the accuracy and relevance of record matching. Semantic types allow the system to understand the meaning of data fields, not just their names, and apply appropriate matching logic.
+- **Automated Intelligence**: Reduces the need for manual rule configuration
+- **Adaptive Learning**: Improves recommendations based on historical performance
+- **Goal-Oriented**: Tailors rules to specific matching objectives
+- **Transparent Decisions**: Provides explanations for recommended rules
+- **Performance Optimization**: Balances matching quality with execution speed
 
-### Semantic Type Map (`includes/semantic_types.js`)
+## Implementation Details
 
-The `semanticTypeMap` is defined in `includes/semantic_types.js` as a JavaScript object. It maps semantic types (keys) to an array of possible column names (values).
+The system is implemented as a set of modular JavaScript components:
 
-```javascript
-// Example: includes/semantic_types.js
-const semanticTypeMap = {
-  email: ["email", "email_address", "emailAddress", "e_mail"],
-  firstName: ["firstName", "first_name", "personfirstname", "fname"],
-  lastName: ["lastName", "last_name", "personlastname", "lname"],
-  // ... other semantic types
-};
+- `field_type_inference.js`: Semantic type detection
+- `goal_analyzer.js`: User intent translation
+- `rule_optimizer.js`: Rule combination evaluation
+- `rule_performance_tracker.js`: Effectiveness monitoring
+- `schema_analyzer.js`: Table structure analysis
+- `intelligent_rule_selector.js`: Main entry point
+- `rule_selection_api.js`: HTTP/CLI interface
 
-module.exports = { semanticTypeMap };
+## Testing
+
+Run the test suite to verify functionality:
+
 ```
-
-### Usage in Matching Functions
-
-Matching functions in `includes/matching_functions.js` and `includes/rule_engine.js` use this map to:
-
-1. **Identify Semantic Type**: Determine the semantic type of each column being compared.
-2. **Apply Type-Aware Logic**: Conditionally apply matching logic based on semantic types. For example, columns of the same semantic type (e.g., two email fields) might use more aggressive matching techniques than columns of different semantic types.
-
-### Extending Semantic Types
-
-To extend the semantic type mapping:
-
-1. **Open `includes/semantic_types.js`**.
-2. **Add New Types**: Add new key-value pairs to the `semanticTypeMap` object.
-  - The **key** should be a unique semantic type identifier (e.g., `city`, `phoneNumber`).
-  - The **value** should be an array of strings representing common column names associated with that semantic type.
-3. **Update Matching Functions**: Modify matching functions to utilize the new semantic types in their logic.
-
-By leveraging semantic type mapping, the system can intelligently adapt its matching strategies based on the meaning of the data fields, leading to more accurate and contextually relevant match results.
-
-## SQL Generation Standards
-
-To ensure consistency and prevent common errors in SQL generation, the project includes a comprehensive set of standards and practices documented in `docs/SQL_GENERATION_STANDARDS.md`. These standards cover:
-
-### JavaScript Regex Patterns
-
-- Proper syntax for regular expressions in JavaScript when generating SQL
-- Avoiding Python-style raw string notation (r'pattern') which is invalid in JavaScript
-- Correct escaping of special characters in regex patterns
-
-### SQL String Generation Best Practices
-
-- Using template literals for readability
-- Handling NULL values defensively
-- Preventing SQL injection
-- Consistent naming conventions
-
-### Testing
-
-The project includes dedicated tests (`tests/unit/regex_pattern_tests.js`) to verify proper regex pattern handling across SQL generation functions. These tests ensure:
-
-- No Python-style raw string notation is used
-- Proper formation of REGEXP_REPLACE calls
-- Consistent abbreviations in standardized addresses
-
-### ESLint Rules
-
-A custom ESLint rule (`no-regex-r-prefix`) automatically detects and flags Python-style regex patterns in JavaScript code, preventing these errors from being introduced in the future.
-
-## License
-
-This project is proprietary and confidential to MarketAds. All rights reserved.
+node includes/tests/rule_selector_test.js
+```
