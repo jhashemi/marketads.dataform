@@ -241,14 +241,42 @@ class TransitiveMatcher {
    * Generates cluster metrics for all clusters
    * @private
    * @param {Array} clusters - Array of cluster objects
+   * @param {Array} matches - Array of match objects
    * @returns {Object} - Metrics object
    */
   generateMetrics(clusters, matches) {
+    if (!clusters || clusters.length === 0) {
+      return {
+        totalClusters: 0,
+        totalRecordsInClusters: 0,
+        averageClusterSize: 0,
+        largestClusterSize: 0,
+        clusterDensities: [],
+        averageConfidences: [],
+        directEdgesCounts: [],
+        transitiveEdgesCounts: [],
+        averageClusterDensity: 0,
+        averageAverageConfidence: 0,
+        totalDirectEdges: 0,
+        totalTransitiveEdges: 0,
+        transitivityScore: 0,
+        clusterSizeDistribution: { counts: {}, percentages: {} }
+      };
+    }
+    
     const totalClusters = clusters.length;
-    const totalRecordsInClusters = clusters.reduce((sum, cluster) => sum + cluster.records.length, 0);
+    
+    // Handle different cluster structures (members vs records)
+    const getClusterMembers = (cluster) => {
+      if (cluster.members) return cluster.members;
+      if (cluster.records) return cluster.records;
+      return [];
+    };
+    
+    const totalRecordsInClusters = clusters.reduce((sum, cluster) => sum + getClusterMembers(cluster).length, 0);
     const averageClusterSize = totalClusters > 0 ? totalRecordsInClusters / totalClusters : 0;
     const largestClusterSize = clusters.length > 0 ?
-      Math.max(...clusters.map(cluster => cluster.records.length)) : 0;
+      Math.max(...clusters.map(cluster => getClusterMembers(cluster).length)) : 0;
 
     const metrics = {
       totalClusters: totalClusters,
@@ -262,26 +290,36 @@ class TransitiveMatcher {
     };
 
     clusters.forEach(cluster => {
-      const clusterSize = cluster.records.length;
+      const members = getClusterMembers(cluster);
+      const clusterSize = members.length;
       const clusterDensity = this.calculateClusterDensity(clusterSize);
-      const avgConfidence = this.calculateAverageConfidence(cluster.records, matches); // Use actual matches
-      const directEdges = this.countDirectEdges(cluster.records, matches); // Use actual matches
-      const transitiveEdges = this.countTransitiveEdges(cluster.records, matches); // Use actual matches
-
+      const avgConfidence = this.calculateAverageConfidence(members, matches);
+      const directEdges = this.countDirectEdges(members, matches);
+      const transitiveEdges = this.countTransitiveEdges(members, matches);
 
       metrics.clusterDensities.push(clusterDensity);
       metrics.averageConfidences.push(avgConfidence);
       metrics.directEdgesCounts.push(directEdges);
       metrics.transitiveEdgesCounts.push(transitiveEdges);
+      
+      // Store metrics in the cluster object if it doesn't already have them
+      if (!cluster.metrics) {
+        cluster.metrics = {
+          directEdges,
+          transitiveEdges,
+          avgConfidence
+        };
+      }
     });
 
-    metrics.averageClusterDensity = metrics.clusterDensities.reduce((sum, density) => sum + density, 0) / totalClusters || 0;
-    metrics.averageAverageConfidence = metrics.averageConfidences.reduce((sum, confidence) => sum + confidence, 0) / totalClusters || 0;
+    metrics.averageClusterDensity = totalClusters > 0 ? 
+      metrics.clusterDensities.reduce((sum, density) => sum + density, 0) / totalClusters : 0;
+    metrics.averageAverageConfidence = totalClusters > 0 ? 
+      metrics.averageConfidences.reduce((sum, confidence) => sum + confidence, 0) / totalClusters : 0;
     metrics.totalDirectEdges = metrics.directEdgesCounts.reduce((sum, count) => sum + count, 0);
     metrics.totalTransitiveEdges = metrics.transitiveEdgesCounts.reduce((sum, count) => sum + count, 0);
     metrics.transitivityScore = this.calculateTransitivityScore(clusters);
     metrics.clusterSizeDistribution = this.calculateClusterSizeDistribution(clusters);
-
 
     return metrics;
   }
@@ -345,13 +383,14 @@ class TransitiveMatcher {
    * @returns {number} Transitivity score (0-1)
    */
   calculateTransitivityScore(clusters) {
-    if (clusters.length === 0) return 0;
+    if (!clusters || clusters.length === 0) return 0;
     
     // Calculate the sum of transitivity scores for all clusters
     const totalTransitivity = clusters.reduce((sum, cluster) => {
-      if (!cluster.metrics || !cluster.metrics.directEdges) return sum;
+      // Skip clusters without metrics
+      if (!cluster.metrics) return sum;
       
-      const directEdges = cluster.metrics.directEdges;
+      const directEdges = cluster.metrics.directEdges || 0;
       const transitiveEdges = cluster.metrics.transitiveEdges || 0;
       const totalEdges = directEdges + transitiveEdges;
       
@@ -374,9 +413,16 @@ class TransitiveMatcher {
   calculateClusterSizeDistribution(clusters) {
     const distribution = {};
     
+    // Helper function to get cluster members consistently
+    const getClusterMembers = (cluster) => {
+      if (cluster.members) return cluster.members;
+      if (cluster.records) return cluster.records;
+      return [];
+    };
+    
     // Count clusters by size
     clusters.forEach(cluster => {
-      const size = cluster.records;
+      const size = getClusterMembers(cluster).length;
       if (!distribution[size]) {
         distribution[size] = 0;
       }
@@ -402,52 +448,239 @@ class TransitiveMatcher {
    * @returns {Object} Detailed cluster metrics
    */
   async getClusterMetrics() {
+    // Generate test data for simulation
+    const testMatches = this.simulateMatchResults();
+    
     // Generate real metrics based on clusters produced by transitive closure
-    const clusters = await this.simulateTransitiveClosure();
-    const metrics = this.generateMetrics(clusters);
+    const closureResults = this.simulateTransitiveClosure(testMatches, {
+      maxDepth: this.maxDepth,
+      confidenceThreshold: this.confidenceThreshold
+    });
+    
+    // Extract clusters from the results
+    const clusters = closureResults.clusters || [];
+    
+    // Generate metrics
+    const metrics = this.generateMetrics(clusters, testMatches);
     
     return {
-      clusterCount: metrics.totalClusters,
-      recordsInClusters: metrics.totalRecordsInClusters,
-      averageClusterSize: metrics.averageClusterSize.toFixed(2),
-      largestClusterSize: metrics.largestClusterSize,
-      transitivityScore: metrics.transitivityScore ? metrics.transitivityScore.toFixed(2) : 0,
-      clusterSizeDistribution: metrics.clusterSizeDistribution,
+      clusterCount: metrics.totalClusters || 0,
+      recordsInClusters: metrics.totalRecordsInClusters || 0,
+      averageClusterSize: metrics.averageClusterSize ? metrics.averageClusterSize.toFixed(2) : '0.00',
+      largestClusterSize: metrics.largestClusterSize || 0,
+      transitivityScore: metrics.transitivityScore ? metrics.transitivityScore.toFixed(2) : '0.00',
+      clusterSizeDistribution: metrics.clusterSizeDistribution || { counts: {}, percentages: {} },
       
       // Additional metrics for analysis
       edgeMetrics: {
-        directEdges: clusters.reduce((sum, c) => sum + (c.metrics?.directEdges || 0), 0),
-        transitiveEdges: clusters.reduce((sum, c) => sum + (c.metrics?.transitiveEdges || 0), 0),
-        avgConfidence: clusters.length > 0 ?
-          (clusters.reduce((sum, c) => sum + (c.metrics?.avgConfidence || 0), 0) / clusters.length).toFixed(2) : 0,
+        directEdges: metrics.totalDirectEdges || 0,
+        transitiveEdges: metrics.totalTransitiveEdges || 0,
+        avgConfidence: metrics.averageAverageConfidence ? metrics.averageAverageConfidence.toFixed(2) : '0.00',
       },
       
       // Performance metrics
       performanceMetrics: {
-        memoryUsage: this.getMemoryUsage(),
-        executionTime: (Date.now() - (clusters[0]?.timestamp || Date.now())) / 1000,
+        memoryUsage: process.memoryUsage ? process.memoryUsage().heapUsed / 1024 / 1024 : 0,
+        executionTime: closureResults.executionTime || 0,
       }
     };
   }
   
   /**
-   * Gets current memory usage (helper method)
-   * @private
-   * @returns {number} Memory usage in MB
+   * Simulates transitive closure for a set of matches
+   * @param {Array<Object>} matches - Array of match objects with source, target, and confidence
+   * @param {Object} options - Options for transitive closure
+   * @param {number} [options.maxDepth=this.maxDepth] - Maximum depth for transitive closure
+   * @param {number} [options.confidenceThreshold=this.confidenceThreshold] - Minimum confidence threshold
+   * @param {boolean} [options.trackPaths=false] - Whether to track match paths
+   * @param {boolean} [options.detectCycles=true] - Whether to detect and handle cycles
+   * @returns {Object} - Object containing transitive matches and cluster information
    */
-  getMemoryUsage() {
-    // Try to get memory usage from Node.js process if available
-    if (typeof process !== 'undefined' && process.memoryUsage) {
-      try {
-        const { heapUsed } = process.memoryUsage();
-        return Math.round(heapUsed / (1024 * 1024) * 100) / 100; // Convert to MB
-      } catch (e) {
-        console.warn('Unable to get heap memory usage:', e.message);
+  simulateTransitiveClosure(matches, options = {}) {
+    // Use provided options or fall back to instance defaults
+    const maxDepth = options.maxDepth || this.maxDepth;
+    const confidenceThreshold = options.confidenceThreshold || this.confidenceThreshold;
+    const trackPaths = options.trackPaths || false;
+    const detectCycles = options.detectCycles !== undefined ? options.detectCycles : true;
+    
+    // Filter matches by confidence threshold
+    const filteredMatches = matches.filter(match => match.confidence >= confidenceThreshold);
+    
+    // Build adjacency list representation of the graph
+    const graph = new Map();
+    const reverseGraph = new Map(); // For bidirectional traversal
+    
+    // Track all unique nodes
+    const allNodes = new Set();
+    
+    // Initialize graph
+    filteredMatches.forEach(match => {
+      const source = match.source || match[this.sourceIdField];
+      const target = match.target || match[this.targetIdField];
+      
+      // Add nodes to the set of all nodes
+      allNodes.add(source);
+      allNodes.add(target);
+      
+      // Add edge to forward graph
+      if (!graph.has(source)) {
+        graph.set(source, new Set());
+      }
+      graph.get(source).add(target);
+      
+      // Add edge to reverse graph for bidirectional traversal
+      if (!reverseGraph.has(target)) {
+        reverseGraph.set(target, new Set());
+      }
+      reverseGraph.get(target).add(source);
+    });
+    
+    // Find all transitive matches
+    const transitiveMatches = [];
+    const visitedPairs = new Set(); // Track visited pairs to avoid duplicates
+    
+    // Helper function to add a match to the results
+    const addMatch = (source, target, depth, path, confidence) => {
+      const pairKey = `${source}-${target}`;
+      if (!visitedPairs.has(pairKey)) {
+        visitedPairs.add(pairKey);
+        transitiveMatches.push({
+          source,
+          target,
+          depth,
+          path: trackPaths ? path : undefined,
+          confidence
+        });
+      }
+    };
+    
+    // Helper function for depth-first search to find transitive matches
+    const dfs = (node, depth, path, visited, targetConfidences) => {
+      if (depth > maxDepth) return;
+      
+      // Get neighbors
+      const neighbors = graph.get(node) || new Set();
+      
+      for (const neighbor of neighbors) {
+        // Skip if this would create a cycle and cycle detection is enabled
+        if (detectCycles && visited.has(neighbor)) continue;
+        
+        // Find the match object for this edge
+        const matchObj = filteredMatches.find(m => 
+          (m.source === node && m.target === neighbor) || 
+          (m[this.sourceIdField] === node && m[this.targetIdField] === neighbor)
+        );
+        
+        if (!matchObj) continue;
+        
+        const confidence = matchObj.confidence || matchObj[this.confidenceField];
+        
+        // For direct matches (depth 1), add to results
+        if (depth === 1) {
+          addMatch(path[0], neighbor, depth, [...path, neighbor], confidence);
+          targetConfidences.set(neighbor, confidence);
+        } else {
+          // For transitive matches, calculate propagated confidence
+          // Use minimum confidence along the path as the transitive confidence
+          const sourceConfidence = targetConfidences.get(node) || 1.0;
+          const transitiveConfidence = Math.min(sourceConfidence, confidence);
+          
+          // Only add if confidence is above threshold
+          if (transitiveConfidence >= confidenceThreshold) {
+            addMatch(path[0], neighbor, depth, [...path, neighbor], transitiveConfidence);
+            targetConfidences.set(neighbor, transitiveConfidence);
+          }
+        }
+        
+        // Continue DFS if within depth limit
+        if (depth < maxDepth) {
+          const newVisited = new Set(visited);
+          newVisited.add(neighbor);
+          
+          dfs(neighbor, depth + 1, [...path, neighbor], newVisited, new Map(targetConfidences));
+        }
+      }
+    };
+    
+    // Start DFS from each node
+    for (const node of allNodes) {
+      const visited = new Set([node]);
+      const path = [node];
+      const targetConfidences = new Map();
+      
+      dfs(node, 1, path, visited, targetConfidences);
+    }
+    
+    // Find clusters (connected components)
+    const clusters = this.findClusters(transitiveMatches);
+    
+    return {
+      directMatches: filteredMatches.length,
+      transitiveMatches: transitiveMatches.length - filteredMatches.length,
+      totalMatches: transitiveMatches.length,
+      matches: transitiveMatches,
+      clusters: clusters
+    };
+  }
+  
+  /**
+   * Finds clusters (connected components) in the match graph
+   * @private
+   * @param {Array<Object>} matches - Array of match objects
+   * @returns {Array<Object>} - Array of cluster objects
+   */
+  findClusters(matches) {
+    // Build undirected graph
+    const graph = new Map();
+    const allNodes = new Set();
+    
+    matches.forEach(match => {
+      const source = match.source || match[this.sourceIdField];
+      const target = match.target || match[this.targetIdField];
+      
+      allNodes.add(source);
+      allNodes.add(target);
+      
+      // Add edge in both directions for undirected graph
+      if (!graph.has(source)) {
+        graph.set(source, new Set());
+      }
+      graph.get(source).add(target);
+      
+      if (!graph.has(target)) {
+        graph.set(target, new Set());
+      }
+      graph.get(target).add(source);
+    });
+    
+    // Find connected components using DFS
+    const visited = new Set();
+    const clusters = [];
+    
+    for (const node of allNodes) {
+      if (!visited.has(node)) {
+        const cluster = [];
+        this.dfs(node, graph, visited, cluster);
+        
+        if (cluster.length > 0) {
+          // Calculate cluster metrics
+          const clusterObj = {
+            id: `cluster_${clusters.length + 1}`,
+            size: cluster.length,
+            members: cluster,
+            metrics: {
+              directEdges: this.countDirectEdges(cluster, matches),
+              transitiveEdges: this.countTransitiveEdges(cluster, matches),
+              averageConfidence: this.calculateAverageConfidence(cluster, matches)
+            }
+          };
+          
+          clusters.push(clusterObj);
+        }
       }
     }
     
-    // Fallback for browsers or if process.memoryUsage fails
-    return 0;
+    return clusters;
   }
 }
 

@@ -7,16 +7,19 @@
 
 const { ValidationRegistry, TestType, TestPriority } = require('./validation_registry');
 const { withErrorHandling } = require('./error_handler');
+const { validateParameters } = require('./parameter_validator');
 
 // Import factory classes
 const { MatchStrategyFactory } = require('../match_strategy_factory');
 const { MatchingSystemFactory } = require('../matching_system_factory');
 const { HistoricalMatcherFactory } = require('../historical_matcher_factory');
+const { TransitiveMatcherFactory } = require('../matching/transitive_matcher_factory');
 
 // Create shared factory instances
 const matchStrategyFactory = new MatchStrategyFactory();
 const matchingSystemFactory = new MatchingSystemFactory();
 const historicalMatcherFactory = new HistoricalMatcherFactory();
+const transitiveMatcherFactory = new TransitiveMatcherFactory();
 
 /**
  * Creates a standard test configuration for waterfall strategy tests
@@ -31,15 +34,33 @@ const historicalMatcherFactory = new HistoricalMatcherFactory();
  * @returns {Object} Test configuration
  */
 function createWaterfallTestConfig(options) {
-  return {
-    sourceTable: options.sourceTable,
-    referenceTables: options.referenceTables,
-    matchingRules: options.matchingRules,
-    thresholds: options.thresholds,
-    fieldMappings: options.fieldMappings || {},
-    requiredFields: options.requiredFields || {},
-    confidenceMultipliers: options.confidenceMultipliers || {}
+  // Define validation rules
+  const validationRules = {
+    required: ['sourceTable', 'referenceTables', 'matchingRules', 'thresholds'],
+    types: {
+      sourceTable: 'string',
+      referenceTables: 'array',
+      matchingRules: 'object',
+      thresholds: 'object',
+      fieldMappings: 'object',
+      requiredFields: 'object',
+      confidenceMultipliers: 'object'
+    },
+    defaults: {
+      fieldMappings: {},
+      requiredFields: {},
+      confidenceMultipliers: {}
+    },
+    messages: {
+      sourceTable: 'Please provide a source table name for the waterfall test.',
+      referenceTables: 'Please provide at least one reference table for the waterfall test.',
+      matchingRules: 'Please provide matching rules for the waterfall test.',
+      thresholds: 'Please provide confidence thresholds for the waterfall test.'
+    }
   };
+
+  // Validate and apply defaults
+  return validateParameters(options, validationRules, 'createWaterfallTestConfig');
 }
 
 /**
@@ -48,28 +69,36 @@ function createWaterfallTestConfig(options) {
  * @returns {Function} Test function
  */
 function createWaterfallTestFn(validator) {
+  // Define validation rules for validator
+  if (typeof validator !== 'function') {
+    throw new Error('createWaterfallTestFn: validator must be a function');
+  }
+
   return withErrorHandling(async function(context) {
     const { parameters } = context;
     
+    // Validate parameters
+    const validatedParams = createWaterfallTestConfig(parameters);
+    
     // Create strategy
     const strategy = matchStrategyFactory.createWaterfallStrategy({
-      referenceTables: parameters.referenceTables,
-      matchingRules: parameters.matchingRules,
-      thresholds: parameters.thresholds,
-      fieldMappings: parameters.fieldMappings,
-      requiredFields: parameters.requiredFields,
-      confidenceMultipliers: parameters.confidenceMultipliers
+      referenceTables: validatedParams.referenceTables,
+      matchingRules: validatedParams.matchingRules,
+      thresholds: validatedParams.thresholds,
+      fieldMappings: validatedParams.fieldMappings,
+      requiredFields: validatedParams.requiredFields,
+      confidenceMultipliers: validatedParams.confidenceMultipliers
     });
     
     // Generate SQL
     const sql = strategy.generateSql({
-      sourceTable: parameters.sourceTable,
+      sourceTable: validatedParams.sourceTable,
       sourceAlias: 's',
       targetAlias: 't'
     });
     
     // Validate SQL with provided validator function
-    return validator(sql, parameters);
+    return validator(sql, validatedParams);
   });
 }
 
@@ -79,28 +108,36 @@ function createWaterfallTestFn(validator) {
  * @returns {Function} Test function
  */
 function createMultiTableWaterfallTestFn(validator) {
+  // Define validation rules for validator
+  if (typeof validator !== 'function') {
+    throw new Error('createMultiTableWaterfallTestFn: validator must be a function');
+  }
+
   return withErrorHandling(async function(context) {
     const { parameters } = context;
     
+    // Validate parameters
+    const validatedParams = createWaterfallTestConfig(parameters);
+    
     // Create strategy
     const strategy = matchStrategyFactory.createMultiTableWaterfallStrategy({
-      referenceTables: parameters.referenceTables,
-      matchingRules: parameters.matchingRules,
-      thresholds: parameters.thresholds,
-      fieldMappings: parameters.fieldMappings,
-      requiredFields: parameters.requiredFields,
-      confidenceMultipliers: parameters.confidenceMultipliers
+      referenceTables: validatedParams.referenceTables,
+      matchingRules: validatedParams.matchingRules,
+      thresholds: validatedParams.thresholds,
+      fieldMappings: validatedParams.fieldMappings,
+      requiredFields: validatedParams.requiredFields,
+      confidenceMultipliers: validatedParams.confidenceMultipliers
     });
     
     // Generate SQL
     const sql = strategy.generateSql({
-      sourceTable: parameters.sourceTable,
+      sourceTable: validatedParams.sourceTable,
       sourceAlias: 's',
       targetAlias: 't'
     });
     
     // Validate SQL with provided validator function
-    return validator(sql, parameters);
+    return validator(sql, validatedParams);
   });
 }
 
@@ -110,23 +147,48 @@ function createMultiTableWaterfallTestFn(validator) {
  * @returns {Function} Test function
  */
 function createMatchingSystemTestFn(executor) {
+  // Define validation rules for executor
+  if (typeof executor !== 'function') {
+    throw new Error('createMatchingSystemTestFn: executor must be a function');
+  }
+
   return withErrorHandling(async function(context) {
     const { parameters } = context;
-    if (!parameters.sourceTable) {
-      throw new Error('Source table is required for MatchingSystem tests.');
-    }
-    if (!parameters.referenceTable) {
-      throw new Error('Reference table is required for MatchingSystem tests.');
-    }
+    
+    // Define validation rules
+    const validationRules = {
+      required: ['sourceTable', 'referenceTable'],
+      types: {
+        sourceTable: 'string',
+        referenceTable: 'string',
+        outputTable: 'string',
+        minimumConfidence: 'number',
+        fieldMappings: 'object'
+      },
+      defaults: {
+        outputTable: 'test_output',
+        minimumConfidence: 0.7
+      },
+      messages: {
+        sourceTable: 'Source table is required for MatchingSystem tests.',
+        referenceTable: 'Reference table is required for MatchingSystem tests.'
+      }
+    };
+
+    // Validate and apply defaults
+    const validatedParams = validateParameters(parameters, validationRules, 'MatchingSystemTest');
+    
     // Create matching system for executor to use
     const matchingSystem = matchingSystemFactory.createMatchingSystem({
-      sourceTable: parameters.sourceTable,
-      targetTables: [parameters.referenceTable],
-      outputTable: 'test_output'
+      sourceTable: validatedParams.sourceTable,
+      targetTables: [validatedParams.referenceTable],
+      outputTable: validatedParams.outputTable,
+      minimumConfidence: validatedParams.minimumConfidence,
+      fieldMappings: validatedParams.fieldMappings
     });
     
     // Execute test with matching system
-    return await executor(matchingSystem, context);
+    return await executor(matchingSystem, { ...context, parameters: validatedParams });
   });
 }
 
@@ -136,25 +198,56 @@ function createMatchingSystemTestFn(executor) {
  * @returns {Function} Test function
  */
 function createHistoricalMatcherTestFn(executor) {
+  // Define validation rules for executor
+  if (typeof executor !== 'function') {
+    throw new Error('createHistoricalMatcherTestFn: executor must be a function');
+  }
+
   return withErrorHandling(async function(context) {
     const { parameters } = context;
-    if (!parameters.sourceTable && !parameters.baseTable) {
-      throw new Error('Source table or base table is required for HistoricalMatcher tests.');
-    }
-    if (!parameters.referenceTable) {
-      throw new Error('Reference table is required for HistoricalMatcher tests.');
-    }
+    
+    // Define validation rules
+    const validationRules = {
+      required: [
+        { name: 'sourceTable', condition: { ifPresent: 'baseTable', ifEquals: false } }
+      ],
+      alternatives: {
+        sourceTable: 'baseTable'
+      },
+      required: ['referenceTable'],
+      types: {
+        sourceTable: 'string',
+        baseTable: 'string',
+        referenceTable: 'string',
+        outputTable: 'string',
+        incrementalMode: 'boolean',
+        timestampColumn: 'string'
+      },
+      defaults: {
+        outputTable: 'test_output',
+        incrementalMode: true,
+        timestampColumn: 'last_updated'
+      },
+      messages: {
+        sourceTable: 'Source table or base table is required for HistoricalMatcher tests.',
+        referenceTable: 'Reference table is required for HistoricalMatcher tests.'
+      }
+    };
+
+    // Validate and apply defaults
+    const validatedParams = validateParameters(parameters, validationRules, 'HistoricalMatcherTest');
+    
     // Create historical matcher for executor to use
     const historicalMatcher = historicalMatcherFactory.createHistoricalMatcher({
-      sourceTable: parameters.sourceTable || parameters.baseTable,
-      targetTables: [parameters.referenceTable],
-      outputTable: 'test_output',
-      incrementalMode: true,
-      timestampColumn: 'last_updated'
+      sourceTable: validatedParams.sourceTable || validatedParams.baseTable,
+      targetTables: [validatedParams.referenceTable],
+      outputTable: validatedParams.outputTable,
+      incrementalMode: validatedParams.incrementalMode,
+      timestampColumn: validatedParams.timestampColumn
     });
     
     // Execute test with historical matcher
-    return await executor(historicalMatcher, context);
+    return await executor(historicalMatcher, { ...context, parameters: validatedParams });
   });
 }
 
@@ -164,22 +257,58 @@ function createHistoricalMatcherTestFn(executor) {
  * @returns {Function} Test function
  */
 function createTransitiveMatcherTestFn(executor) {
+  // Define validation rules for executor
+  if (typeof executor !== 'function') {
+    throw new Error('createTransitiveMatcherTestFn: executor must be a function');
+  }
+
   return withErrorHandling(async function(context) {
     const { parameters } = context;
-    if (!parameters.matchResultsTable) {
-      throw new Error('Match results table is required for TransitiveMatcher tests.');
-    }
-    if (!parameters.confidenceThreshold) {
-      throw new Error('Confidence threshold is required for TransitiveMatcher tests.');
-    }
-    // Create transitive matcher for executor to use
-    const transitiveMatcher = new TransitiveMatcher({ // Directly use constructor since factory might not be needed for tests
-      matchResultsTable: parameters.matchResultsTable,
-      confidenceThreshold: parameters.confidenceThreshold,
-    });
+    
+    // Define validation rules
+    const validationRules = {
+      required: ['matchResultsTable', 'confidenceThreshold'],
+      types: {
+        matchResultsTable: 'string',
+        confidenceThreshold: 'number',
+        outputTable: 'string',
+        maxDepth: 'number',
+        includeDirectMatches: 'boolean',
+        sourceIdField: 'string',
+        targetIdField: 'string',
+        confidenceField: 'string'
+      },
+      defaults: {
+        outputTable: 'transitive_matches',
+        maxDepth: 3,
+        includeDirectMatches: true,
+        sourceIdField: 'source_id',
+        targetIdField: 'target_id',
+        confidenceField: 'confidence'
+      },
+      messages: {
+        matchResultsTable: 'Match results table is required for TransitiveMatcher tests.',
+        confidenceThreshold: 'Confidence threshold is required for TransitiveMatcher tests.'
+      }
+    };
 
+    // Validate and apply defaults
+    const validatedParams = validateParameters(parameters, validationRules, 'TransitiveMatcherTest');
+    
+    // Create transitive matcher for executor to use
+    const transitiveMatcher = transitiveMatcherFactory.createTransitiveMatcher({
+      matchResultsTable: validatedParams.matchResultsTable,
+      confidenceThreshold: validatedParams.confidenceThreshold,
+      outputTable: validatedParams.outputTable,
+      maxDepth: validatedParams.maxDepth,
+      includeDirectMatches: validatedParams.includeDirectMatches,
+      sourceIdField: validatedParams.sourceIdField,
+      targetIdField: validatedParams.targetIdField,
+      confidenceField: validatedParams.confidenceField
+    });
+    
     // Execute test with transitive matcher
-    return await executor(transitiveMatcher, context);
+    return await executor(transitiveMatcher, { ...context, parameters: validatedParams });
   });
 }
 
@@ -191,5 +320,8 @@ module.exports = {
   createMatchingSystemTestFn,
   createHistoricalMatcherTestFn,
   createTransitiveMatcherTestFn,
-  matchStrategyFactory
+  matchStrategyFactory,
+  matchingSystemFactory,
+  historicalMatcherFactory,
+  transitiveMatcherFactory
 };

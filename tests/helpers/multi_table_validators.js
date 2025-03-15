@@ -1,192 +1,344 @@
 /**
- * Multi-Table Waterfall Strategy SQL Validators
+ * Multi-Table Validators
  * 
- * This module provides specialized validator functions for multi-table waterfall strategy tests.
- * It contains functions to validate different aspects of the generated SQL.
+ * This module provides validation functions for the multi-table waterfall strategy tests.
+ * Each function checks specific aspects of the generated SQL and returns a validation result.
  */
 
-const { validateSQL } = require('../../includes/validation/sql_validators');
+const { ValidationError } = require('../../includes/validation/validation_errors');
 
 /**
- * Validate basic multi-table waterfall SQL structure
- * @param {string} sql - Generated SQL
- * @param {Object} parameters - Test parameters
- * @returns {Object} Validation result
+ * Validates the basic structure of a multi-table waterfall SQL query
+ * 
+ * @param {string} sql - The generated SQL query
+ * @param {object} params - The parameters used to generate the query
+ * @returns {object} Validation result
  */
-function validateBasicMultiTableStructure(sql, parameters) {
-  // Basic SQL validation
-  validateSQL(sql);
-  
-  // Check that SQL has CTE for source data
-  expect(sql).not.toBeNull();
-  expect(sql.includes('WITH source_data AS')).toBe(true);
-  
-  // Check for multi-table waterfall comment
-  expect(sql.includes('Multi-table waterfall match strategy')).toBe(true);
-  
-  // Check that SQL has source table
-  expect(sql.includes(`FROM ${parameters.sourceTable}`)).toBe(true);
-  
-  // Check that SQL has CTEs for all reference tables
-  for (const refTable of parameters.referenceTables) {
-    expect(sql.includes(`FROM ${refTable.table}`)).toBe(true);
+function validateBasicMultiTableStructure(sql, params) {
+  try {
+    // Check for required SQL components
+    if (!sql.includes('WITH')) {
+      throw new ValidationError('SQL must include WITH clause for CTEs');
+    }
+    
+    if (!sql.includes('SELECT')) {
+      throw new ValidationError('SQL must include SELECT statement');
+    }
+    
+    if (!sql.includes('FROM')) {
+      throw new ValidationError('SQL must include FROM clause');
+    }
+    
+    if (!sql.includes('JOIN')) {
+      throw new ValidationError('SQL must include at least one JOIN');
+    }
+    
+    // Check for source table
+    if (!sql.includes(params.sourceTable)) {
+      throw new ValidationError(`SQL must reference source table: ${params.sourceTable}`);
+    }
+    
+    // Check for waterfall strategy components
+    if (!sql.includes('match_rank')) {
+      throw new ValidationError('SQL must include match_rank for waterfall prioritization');
+    }
+    
+    if (!sql.includes('confidence_score')) {
+      throw new ValidationError('SQL must include confidence_score calculation');
+    }
+    
+    // Check for comments
+    if (!sql.includes('-- Multi-Table Waterfall Strategy')) {
+      throw new ValidationError('SQL must include strategy comment');
+    }
+    
+    return {
+      success: true,
+      message: 'Basic multi-table structure validation passed'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message,
+      error
+    };
   }
-  
-  // Check for priority-based ranking
-  expect(sql.includes('table_priority')).toBe(true);
-  expect(sql.includes('match_priority')).toBe(true);
-  expect(sql.includes('match_score')).toBe(true);
-  
-  // Check for final ranking
-  expect(sql.includes('ranked_matches')).toBe(true);
-  expect(sql.includes('ROW_NUMBER()')).toBe(true);
-  
-  return {
-    success: true,
-    message: 'Basic multi-table waterfall structure validation passed'
-  };
 }
 
 /**
- * Validate field mapping in multi-table waterfall SQL
- * @param {string} sql - Generated SQL
- * @param {Object} parameters - Test parameters
- * @returns {Object} Validation result
+ * Validates field mapping functionality in the SQL query
+ * 
+ * @param {string} sql - The generated SQL query
+ * @param {object} params - The parameters used to generate the query
+ * @returns {object} Validation result
  */
-function validateFieldMapping(sql, parameters) {
-  // Basic validation first
-  validateBasicMultiTableStructure(sql, parameters);
-  
-  // Check for field mappings
-  if (parameters.fieldMappings) {
-    for (const [tableId, mappings] of Object.entries(parameters.fieldMappings)) {
-      for (const mapping of mappings) {
-        expect(sql.includes(mapping.targetField)).toBe(true);
+function validateFieldMapping(sql, params) {
+  try {
+    // First validate basic structure
+    const basicValidation = validateBasicMultiTableStructure(sql, params);
+    if (!basicValidation.success) {
+      return basicValidation;
+    }
+    
+    // Check for field mappings in the SQL
+    const { fieldMappings } = params;
+    
+    if (!fieldMappings) {
+      throw new ValidationError('Field mappings parameter is required');
+    }
+    
+    // Check each table's field mappings
+    Object.entries(fieldMappings).forEach(([tableId, mappings]) => {
+      mappings.forEach(mapping => {
+        const { sourceField, targetField } = mapping;
+        
+        // Check for source field reference
+        if (!sql.includes(sourceField)) {
+          throw new ValidationError(`SQL must reference source field: ${sourceField}`);
+        }
+        
+        // Check for target field reference
+        if (!sql.includes(targetField)) {
+          throw new ValidationError(`SQL must reference target field: ${targetField}`);
+        }
+        
+        // Check for mapping in SELECT or JOIN
+        const mappingPattern = new RegExp(`${sourceField}.*${targetField}|${targetField}.*${sourceField}`);
+        if (!mappingPattern.test(sql)) {
+          throw new ValidationError(`SQL must include mapping between ${sourceField} and ${targetField}`);
+        }
+      });
+    });
+    
+    return {
+      success: true,
+      message: 'Field mapping validation passed'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message,
+      error
+    };
+  }
+}
+
+/**
+ * Validates confidence multipliers in the SQL query
+ * 
+ * @param {string} sql - The generated SQL query
+ * @param {object} params - The parameters used to generate the query
+ * @returns {object} Validation result
+ */
+function validateConfidenceMultipliers(sql, params) {
+  try {
+    // First validate basic structure
+    const basicValidation = validateBasicMultiTableStructure(sql, params);
+    if (!basicValidation.success) {
+      return basicValidation;
+    }
+    
+    // Check for confidence multipliers in the SQL
+    const { confidenceMultipliers } = params;
+    
+    if (!confidenceMultipliers) {
+      throw new ValidationError('Confidence multipliers parameter is required');
+    }
+    
+    // Check each table's confidence multiplier
+    Object.entries(confidenceMultipliers).forEach(([tableId, multiplier]) => {
+      // Convert multiplier to string for exact matching
+      const multiplierStr = multiplier.toString();
+      
+      // Check for multiplier reference in SQL
+      if (!sql.includes(multiplierStr)) {
+        throw new ValidationError(`SQL must include confidence multiplier: ${multiplierStr} for table: ${tableId}`);
       }
-    }
-  }
-  
-  return {
-    success: true,
-    message: 'Field mapping validation passed'
-  };
-}
-
-/**
- * Validate confidence multipliers in multi-table waterfall SQL
- * @param {string} sql - Generated SQL
- * @param {Object} parameters - Test parameters
- * @returns {Object} Validation result
- */
-function validateConfidenceMultipliers(sql, parameters) {
-  // Basic validation first
-  validateBasicMultiTableStructure(sql, parameters);
-  
-  // Check for confidence multipliers
-  if (parameters.confidenceMultipliers) {
-    for (const [tableId, multiplier] of Object.entries(parameters.confidenceMultipliers)) {
-      expect(sql.includes(`* ${multiplier}`)).toBe(true);
-    }
-  }
-  
-  return {
-    success: true,
-    message: 'Confidence multipliers validation passed'
-  };
-}
-
-/**
- * Validate required fields in multi-table waterfall SQL
- * @param {string} sql - Generated SQL
- * @param {Object} parameters - Test parameters
- * @returns {Object} Validation result
- */
-function validateRequiredFields(sql, parameters) {
-  // Basic validation first
-  validateBasicMultiTableStructure(sql, parameters);
-  
-  // Check for required fields
-  if (parameters.requiredFields) {
-    for (const [tableId, fields] of Object.entries(parameters.requiredFields)) {
-      for (const field of fields) {
-        expect(sql.includes(field)).toBe(true);
+      
+      // Check for multiplier in confidence calculation
+      const multiplierPattern = new RegExp(`confidence.*${multiplierStr}|${multiplierStr}.*confidence`);
+      if (!multiplierPattern.test(sql)) {
+        throw new ValidationError(`SQL must use multiplier ${multiplierStr} in confidence calculation for table: ${tableId}`);
       }
+    });
+    
+    return {
+      success: true,
+      message: 'Confidence multipliers validation passed'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message,
+      error
+    };
+  }
+}
+
+/**
+ * Validates required fields functionality in the SQL query
+ * 
+ * @param {string} sql - The generated SQL query
+ * @param {object} params - The parameters used to generate the query
+ * @returns {object} Validation result
+ */
+function validateRequiredFields(sql, params) {
+  try {
+    // First validate basic structure
+    const basicValidation = validateBasicMultiTableStructure(sql, params);
+    if (!basicValidation.success) {
+      return basicValidation;
     }
+    
+    // Check for required fields in the SQL
+    const { requiredFields } = params;
+    
+    if (!requiredFields) {
+      throw new ValidationError('Required fields parameter is required');
+    }
+    
+    // Check each table's required fields
+    Object.entries(requiredFields).forEach(([tableId, fields]) => {
+      fields.forEach(field => {
+        // Check for field reference in SQL
+        if (!sql.includes(field)) {
+          throw new ValidationError(`SQL must reference required field: ${field} for table: ${tableId}`);
+        }
+        
+        // Check for field in WHERE or JOIN condition
+        const fieldPattern = new RegExp(`WHERE.*${field}|JOIN.*${field}|AND.*${field}|OR.*${field}`);
+        if (!fieldPattern.test(sql)) {
+          throw new ValidationError(`SQL must use required field ${field} in filtering condition for table: ${tableId}`);
+        }
+      });
+    });
+    
+    return {
+      success: true,
+      message: 'Required fields validation passed'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message,
+      error
+    };
   }
-  
-  return {
-    success: true,
-    message: 'Required fields validation passed'
-  };
 }
 
 /**
- * Validate multiple matches in multi-table waterfall SQL
- * @param {string} sql - Generated SQL
- * @param {Object} parameters - Test parameters
- * @returns {Object} Validation result
+ * Validates multiple matches functionality in the SQL query
+ * 
+ * @param {string} sql - The generated SQL query
+ * @param {object} params - The parameters used to generate the query
+ * @returns {object} Validation result
  */
-function validateMultipleMatches(sql, parameters) {
-  // Basic validation first
-  validateBasicMultiTableStructure(sql, parameters);
-  
-  // Check for multiple matches logic
-  if (parameters.allowMultipleMatches && parameters.maxMatches > 1) {
-    expect(sql.includes(`match_rank <= ${parameters.maxMatches}`)).toBe(true);
-  } else {
-    expect(sql.includes('match_rank = 1')).toBe(true);
+function validateMultipleMatches(sql, params) {
+  try {
+    // First validate basic structure
+    const basicValidation = validateBasicMultiTableStructure(sql, params);
+    if (!basicValidation.success) {
+      return basicValidation;
+    }
+    
+    // Check for multiple matches parameters
+    const { allowMultipleMatches, maxMatches } = params;
+    
+    if (allowMultipleMatches !== true) {
+      throw new ValidationError('allowMultipleMatches must be true');
+    }
+    
+    if (!maxMatches || maxMatches < 1) {
+      throw new ValidationError('maxMatches must be a positive integer');
+    }
+    
+    // Check for multiple matches handling in SQL
+    if (!sql.includes('ROW_NUMBER()')) {
+      throw new ValidationError('SQL must use ROW_NUMBER() for multiple matches');
+    }
+    
+    // Check for max matches limit
+    const maxMatchesStr = maxMatches.toString();
+    const maxMatchesPattern = new RegExp(`match_rank\\s*<=\\s*${maxMatchesStr}|match_rank\\s*<\\s*${parseInt(maxMatchesStr) + 1}`);
+    if (!maxMatchesPattern.test(sql)) {
+      throw new ValidationError(`SQL must limit matches to ${maxMatches}`);
+    }
+    
+    return {
+      success: true,
+      message: 'Multiple matches validation passed'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message,
+      error
+    };
   }
-  
-  return {
-    success: true,
-    message: 'Multiple matches validation passed'
-  };
 }
 
 /**
- * Comprehensive validation of multi-table waterfall SQL
- * Checks all aspects of the generated SQL
- * @param {string} sql - Generated SQL
- * @param {Object} parameters - Test parameters
- * @returns {Object} Validation result
+ * Validates comprehensive functionality in the SQL query
+ * 
+ * @param {string} sql - The generated SQL query
+ * @param {object} params - The parameters used to generate the query
+ * @returns {object} Validation result
  */
-function validateComprehensive(sql, parameters) {
-  // Run all validations
-  validateBasicMultiTableStructure(sql, parameters);
-  validateFieldMapping(sql, parameters);
-  validateConfidenceMultipliers(sql, parameters);
-  validateRequiredFields(sql, parameters);
-  validateMultipleMatches(sql, parameters);
-  
-  // Check for source data CTE
-  expect(sql.includes('source_data AS (')).toBe(true);
-  
-  // Check for all reference tables
-  parameters.referenceTables.forEach((refTable, index) => {
-    expect(sql.includes(`matches_${index + 1} AS (`)).toBe(true);
-    expect(sql.includes(`${refTable.table} AS`)).toBe(true);
-  });
-  
-  // Check for match confidence levels
-  expect(sql.includes('CASE')).toBe(true);
-  expect(sql.includes(`>= ${parameters.thresholds.high} THEN 'HIGH'`)).toBe(true);
-  expect(sql.includes(`>= ${parameters.thresholds.medium} THEN 'MEDIUM'`)).toBe(true);
-  expect(sql.includes(`>= ${parameters.thresholds.low} THEN 'LOW'`)).toBe(true);
-  
-  // Check for union of reference table matches
-  expect(sql.includes('UNION ALL')).toBe(true);
-  
-  // Check for ranking logic
-  expect(sql.includes('ORDER BY')).toBe(true);
-  expect(sql.includes('table_priority')).toBe(true);
-  
-  return {
-    success: true,
-    message: 'Comprehensive validation passed'
-  };
+function validateComprehensive(sql, params) {
+  try {
+    // Run all validations
+    const validations = [
+      validateBasicMultiTableStructure(sql, params),
+      validateFieldMapping(sql, params),
+      validateConfidenceMultipliers(sql, params),
+      validateRequiredFields(sql, params),
+      validateMultipleMatches(sql, params)
+    ];
+    
+    // Check for any validation failures
+    const failures = validations.filter(v => !v.success);
+    if (failures.length > 0) {
+      throw new ValidationError(`Comprehensive validation failed: ${failures.map(f => f.message).join(', ')}`);
+    }
+    
+    // Additional comprehensive checks
+    
+    // Check for thresholds
+    const { thresholds } = params;
+    if (thresholds) {
+      Object.entries(thresholds).forEach(([level, value]) => {
+        if (!sql.includes(value.toString())) {
+          throw new ValidationError(`SQL must include ${level} threshold: ${value}`);
+        }
+      });
+    }
+    
+    // Check for complex SQL features
+    const complexFeatures = [
+      'WITH', 'PARTITION BY', 'ORDER BY', 'ROW_NUMBER()', 
+      'CASE WHEN', 'COALESCE', 'JOIN', 'LEFT JOIN'
+    ];
+    
+    complexFeatures.forEach(feature => {
+      if (!sql.includes(feature)) {
+        throw new ValidationError(`SQL must include complex feature: ${feature}`);
+      }
+    });
+    
+    return {
+      success: true,
+      message: 'Comprehensive validation passed'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message,
+      error
+    };
+  }
 }
 
-// Export all validator functions
+// Export validation functions
 module.exports = {
   validateBasicMultiTableStructure,
   validateFieldMapping,

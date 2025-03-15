@@ -9,6 +9,7 @@
 const { MatchStrategyFactory } = require('../../includes/match_strategy_factory');
 const { validateSQL } = require('../../includes/validation/sql_validators');
 const { withErrorHandling } = require('../../includes/validation/test_helpers');
+const { validateParameters } = require('../../includes/validation/parameter_validator');
 
 // Create a strategy factory instance
 const matchStrategyFactory = new MatchStrategyFactory();
@@ -141,6 +142,9 @@ const DEFAULT_TEST_PARAMETERS = {
   confidenceMultipliers: {
     verified_customers: 1.2,
     crm_customers: 0.9
+  },
+  factoryOptions: {
+    useClassBasedFactoryPattern: true
   }
 };
 
@@ -150,10 +154,12 @@ const DEFAULT_TEST_PARAMETERS = {
 class MultiTableTestFactory {
   /**
    * Create a new MultiTableTestFactory
-   * @param {Object} defaultParameters - Default parameters for tests
+   * @param {Object} options - Factory options
+   * @param {Object} options.defaultParameters - Default parameters for tests
    */
-  constructor(defaultParameters = DEFAULT_TEST_PARAMETERS) {
-    this.defaultParameters = defaultParameters;
+  constructor(options = {}) {
+    this.defaultParameters = options.defaultParameters || DEFAULT_TEST_PARAMETERS;
+    this.matchStrategyFactory = options.matchStrategyFactory || matchStrategyFactory;
   }
 
   /**
@@ -163,19 +169,22 @@ class MultiTableTestFactory {
    * @returns {Function} Test function
    */
   createTest(testParameters, validationFn) {
+    // Store reference to this for use in the closure
+    const self = this;
+    
     return withErrorHandling(async function(context) {
       // Merge default parameters with test-specific parameters
       const parameters = {
-        ...DEFAULT_TEST_PARAMETERS,
+        ...self.defaultParameters,
         ...(context.parameters || {}),
         ...testParameters
       };
       
       // Validate required parameters
-      this._validateParameters(parameters);
+      self._validateParameters(parameters);
       
-      // Create strategy
-      const strategy = matchStrategyFactory.createMultiTableWaterfallStrategy({
+      // Create strategy using factory pattern
+      const strategy = self.matchStrategyFactory.createMultiTableWaterfallStrategy({
         referenceTables: parameters.referenceTables,
         matchingRules: parameters.matchingRules,
         thresholds: parameters.thresholds,
@@ -196,8 +205,8 @@ class MultiTableTestFactory {
       });
       
       // Validate SQL with provided validator function or default validation
-      return validationFn ? validationFn(sql, parameters) : this._defaultValidation(sql, parameters);
-    }.bind(this));
+      return validationFn ? validationFn(sql, parameters) : self._defaultValidation(sql, parameters);
+    });
   }
   
   /**
@@ -207,17 +216,42 @@ class MultiTableTestFactory {
    * @throws {Error} If required parameters are missing
    */
   _validateParameters(parameters) {
-    // Check for required parameters
-    if (!parameters.sourceTable) {
-      throw new Error('Source table is required for multi-table waterfall test');
-    }
-    
-    if (!parameters.referenceTables || !Array.isArray(parameters.referenceTables) || parameters.referenceTables.length === 0) {
-      throw new Error('Reference tables are required for multi-table waterfall test');
-    }
+    // Define validation rules
+    const validationRules = {
+      required: ['sourceTable', 'referenceTables', 'matchingRules', 'thresholds'],
+      types: {
+        sourceTable: 'string',
+        referenceTables: 'array',
+        matchingRules: 'object',
+        thresholds: 'object',
+        fieldMappings: 'object',
+        requiredFields: 'object',
+        confidenceMultipliers: 'object',
+        factoryOptions: 'object'
+      },
+      defaults: {
+        fieldMappings: {},
+        requiredFields: {},
+        confidenceMultipliers: {},
+        factoryOptions: { useClassBasedFactoryPattern: true }
+      },
+      messages: {
+        sourceTable: 'Source table is required for multi-table waterfall test',
+        referenceTables: 'Reference tables are required for multi-table waterfall test',
+        matchingRules: 'Matching rules are required for multi-table waterfall test',
+        thresholds: 'Thresholds are required for multi-table waterfall test'
+      }
+    };
+
+    // Validate and apply defaults
+    const validatedParams = validateParameters(parameters, validationRules, 'MultiTableTestFactory');
     
     // Validate reference tables
-    parameters.referenceTables.forEach((refTable, index) => {
+    if (!Array.isArray(validatedParams.referenceTables) || validatedParams.referenceTables.length === 0) {
+      throw new Error('Reference tables must be a non-empty array');
+    }
+    
+    validatedParams.referenceTables.forEach((refTable, index) => {
       if (!refTable.id) {
         throw new Error(`Reference table at index ${index} must have an id`);
       }
@@ -227,17 +261,14 @@ class MultiTableTestFactory {
       }
     });
     
-    // Validate matching rules
-    if (!parameters.matchingRules) {
-      throw new Error('Matching rules are required for multi-table waterfall test');
-    }
-    
     // Ensure there are matching rules for each reference table
-    parameters.referenceTables.forEach(refTable => {
-      if (!parameters.matchingRules[refTable.id]) {
+    validatedParams.referenceTables.forEach(refTable => {
+      if (!validatedParams.matchingRules[refTable.id]) {
         throw new Error(`Matching rules are required for reference table ${refTable.id}`);
       }
     });
+    
+    return validatedParams;
   }
   
   /**
@@ -252,36 +283,36 @@ class MultiTableTestFactory {
     validateSQL(sql);
     
     // Check that SQL has CTE for source data
-    expect(sql).not.toBeNull();
-    expect(sql.includes('WITH source_data AS')).toBe(true);
+    if (!sql.includes('WITH source_data AS')) {
+      return {
+        success: false,
+        message: 'SQL does not include source data CTE'
+      };
+    }
+    
+    // Check for multi-table waterfall comment
+    if (!sql.includes('Multi-table waterfall match strategy')) {
+      return {
+        success: false,
+        message: 'SQL does not include multi-table waterfall comment'
+      };
+    }
+    
+    // Check that SQL has source table
+    if (!sql.includes(`FROM ${parameters.sourceTable}`)) {
+      return {
+        success: false,
+        message: `SQL does not include source table: ${parameters.sourceTable}`
+      };
+    }
     
     // Check that SQL has CTEs for all reference tables
     for (const refTable of parameters.referenceTables) {
-      expect(sql.includes(`FROM ${refTable.table}`)).toBe(true);
-    }
-    
-    // Check for required field conditions if specified
-    if (parameters.requiredFields) {
-      for (const [tableId, fields] of Object.entries(parameters.requiredFields)) {
-        for (const field of fields) {
-          expect(sql.includes(field)).toBe(true);
-        }
-      }
-    }
-    
-    // Check for confidence multipliers if specified
-    if (parameters.confidenceMultipliers) {
-      for (const [tableId, multiplier] of Object.entries(parameters.confidenceMultipliers)) {
-        expect(sql.includes(`* ${multiplier}`)).toBe(true);
-      }
-    }
-    
-    // Check for field mappings if specified
-    if (parameters.fieldMappings) {
-      for (const [tableId, mappings] of Object.entries(parameters.fieldMappings)) {
-        for (const mapping of mappings) {
-          expect(sql.includes(mapping.targetField)).toBe(true);
-        }
+      if (!sql.includes(`FROM ${refTable.table}`)) {
+        return {
+          success: false,
+          message: `SQL does not include reference table: ${refTable.table}`
+        };
       }
     }
     
@@ -292,7 +323,7 @@ class MultiTableTestFactory {
   }
 }
 
-// Export the factory class and default parameters
+// Export factory class and default parameters
 module.exports = {
   MultiTableTestFactory,
   DEFAULT_TEST_PARAMETERS

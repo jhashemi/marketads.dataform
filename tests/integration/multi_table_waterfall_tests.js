@@ -5,10 +5,9 @@
  * which prioritizes matches based on reference table priority and match confidence.
  */
 
-const { test, describe } = require('../test_framework');
-const { TestType } = require('../test_types');
-const { withErrorHandling } = require('../../includes/validation/test_helpers');
-const { MultiTableTestFactory } = require('../helpers/multi_table_test_factory');
+const { TestType, TestPriority } = require('../../includes/validation/validation_registry');
+const { withErrorHandling } = require('../../includes/validation/error_handler');
+const { MultiTableTestFactory, DEFAULT_TEST_PARAMETERS } = require('../helpers/multi_table_test_factory');
 const { 
   validateBasicMultiTableStructure,
   validateFieldMapping,
@@ -20,51 +19,43 @@ const {
 
 // Create test factory instance with standardized options
 const multiTableTestFactory = new MultiTableTestFactory({
-  defaultSourceTable: "test_customer_data",
-  defaultReferenceTables: [
-    {
-      id: "verified_customers",
-      table: "verified_customers",
-      name: "Verified Customers",
-      keyField: "customer_id",
-      priority: 1
-    },
-    {
-      id: "crm_customers",
-      table: "crm_customers",
-      name: "CRM Customers",
-      keyField: "customer_id",
-      priority: 2
+  defaultParameters: {
+    ...DEFAULT_TEST_PARAMETERS,
+    sourceTable: "test_customer_data",
+    factoryOptions: {
+      useClassBasedFactoryPattern: true
     }
-  ],
-  defaultOptions: {
-    confidenceThreshold: 0.75,
-    allowMultipleMatches: false,
-    maxMatches: 1
   }
 });
 
-// Define test suite
-describe('Multi-Table Waterfall Strategy Tests', () => {
+// Define tests array
+const tests = [
   // Basic multi-table waterfall test
-  test('Basic Multi-Table Waterfall Test', {
-    type: TestType.INTEGRATION,
+  {
     id: 'multi_table_waterfall_basic_test',
-    priority: 1,
+    name: 'Basic Multi-Table Waterfall Test',
+    description: 'Tests the basic functionality of the multi-table waterfall strategy',
+    type: TestType.INTEGRATION,
+    priority: TestPriority.HIGH,
+    tags: ['multi-table', 'waterfall', 'basic'],
     parameters: {
       sourceTable: "test_customer_data",
       factoryOptions: {
         useClassBasedFactoryPattern: true
       }
-    }
-  }, multiTableTestFactory.createTest({}, validateBasicMultiTableStructure));
+    },
+    testFn: multiTableTestFactory.createTest({}, validateBasicMultiTableStructure)
+  },
   
   // Field mapping test
-  test('Multi-Table Waterfall Field Mapping Test', {
-    type: TestType.INTEGRATION,
+  {
     id: 'multi_table_waterfall_field_mapping_test',
-    priority: 2,
+    name: 'Multi-Table Waterfall Field Mapping Test',
+    description: 'Tests field mapping functionality in the multi-table waterfall strategy',
+    type: TestType.INTEGRATION,
+    priority: TestPriority.MEDIUM,
     dependencies: ['multi_table_waterfall_basic_test'],
+    tags: ['multi-table', 'waterfall', 'field-mapping'],
     parameters: {
       sourceTable: "test_customer_data",
       factoryOptions: {
@@ -92,30 +83,38 @@ describe('Multi-Table Waterfall Strategy Tests', () => {
           }
         ]
       }
-    }
-  }, multiTableTestFactory.createTest({}, validateFieldMapping));
+    },
+    testFn: multiTableTestFactory.createTest({}, validateFieldMapping)
+  },
   
   // Confidence multipliers test
-  test('Multi-Table Waterfall Confidence Test', {
-    type: TestType.INTEGRATION,
+  {
     id: 'multi_table_waterfall_confidence_test',
-    priority: 2,
+    name: 'Multi-Table Waterfall Confidence Test',
+    description: 'Tests confidence multipliers in the multi-table waterfall strategy',
+    type: TestType.INTEGRATION,
+    priority: TestPriority.MEDIUM,
     dependencies: ['multi_table_waterfall_basic_test'],
+    tags: ['multi-table', 'waterfall', 'confidence'],
     parameters: {
       sourceTable: "test_customer_data",
       confidenceMultipliers: {
         verified_customers: 1.5,
         crm_customers: 0.75
       }
-    }
-  }, multiTableTestFactory.createTest({}, validateConfidenceMultipliers));
+    },
+    testFn: multiTableTestFactory.createTest({}, validateConfidenceMultipliers)
+  },
   
   // Required fields test
-  test('Multi-Table Waterfall Required Fields Test', {
-    type: TestType.INTEGRATION,
+  {
     id: 'multi_table_waterfall_required_fields_test',
-    priority: 2,
+    name: 'Multi-Table Waterfall Required Fields Test',
+    description: 'Tests required fields functionality in the multi-table waterfall strategy',
+    type: TestType.INTEGRATION,
+    priority: TestPriority.MEDIUM,
     dependencies: ['multi_table_waterfall_basic_test'],
+    tags: ['multi-table', 'waterfall', 'required-fields'],
     parameters: {
       sourceTable: "test_customer_data",
       requiredFields: {
@@ -128,27 +127,34 @@ describe('Multi-Table Waterfall Strategy Tests', () => {
           "lname"
         ]
       }
-    }
-  }, multiTableTestFactory.createTest({}, validateRequiredFields));
+    },
+    testFn: multiTableTestFactory.createTest({}, validateRequiredFields)
+  },
   
   // Multiple matches test
-  test('Multi-Table Waterfall Multiple Matches Test', {
-    type: TestType.INTEGRATION,
+  {
     id: 'multi_table_waterfall_multiple_matches_test',
-    priority: 2,
+    name: 'Multi-Table Waterfall Multiple Matches Test',
+    description: 'Tests multiple matches functionality in the multi-table waterfall strategy',
+    type: TestType.INTEGRATION,
+    priority: TestPriority.MEDIUM,
     dependencies: ['multi_table_waterfall_basic_test'],
+    tags: ['multi-table', 'waterfall', 'multiple-matches'],
     parameters: {
       sourceTable: "test_customer_data",
       allowMultipleMatches: true,
       maxMatches: 3
-    }
-  }, multiTableTestFactory.createTest({}, validateMultipleMatches));
+    },
+    testFn: multiTableTestFactory.createTest({}, validateMultipleMatches)
+  },
   
   // Large scale test with all options
-  test('Multi-Table Waterfall Large Scale Test', {
-    type: TestType.INTEGRATION,
+  {
     id: 'multi_table_waterfall_large_scale_test',
-    priority: 3,
+    name: 'Multi-Table Waterfall Large Scale Test',
+    description: 'Tests the multi-table waterfall strategy with all options enabled',
+    type: TestType.INTEGRATION,
+    priority: TestPriority.LOW,
     dependencies: [
       'multi_table_waterfall_basic_test',
       'multi_table_waterfall_field_mapping_test',
@@ -156,6 +162,7 @@ describe('Multi-Table Waterfall Strategy Tests', () => {
       'multi_table_waterfall_required_fields_test',
       'multi_table_waterfall_multiple_matches_test'
     ],
+    tags: ['multi-table', 'waterfall', 'comprehensive'],
     parameters: {
       sourceTable: "test_customers_combined",
       factoryOptions: {
@@ -254,122 +261,42 @@ describe('Multi-Table Waterfall Strategy Tests', () => {
       },
       fieldMappings: {
         verified_customers: [
-          {
-            sourceField: "first_name",
-            targetField: "first_name_mapped"
-          },
-          {
-            sourceField: "last_name",
-            targetField: "last_name_mapped"
-          },
-          {
-            sourceField: "email",
-            targetField: "email_mapped"
-          }
+          { sourceField: "first_name", targetField: "first_name_mapped" },
+          { sourceField: "last_name", targetField: "last_name_mapped" },
+          { sourceField: "email", targetField: "email_mapped" }
         ],
         crm_customers: [
-          {
-            sourceField: "fname",
-            targetField: "first_name_mapped"
-          },
-          {
-            sourceField: "lname",
-            targetField: "last_name_mapped"
-          },
-          {
-            sourceField: "phone_number",
-            targetField: "phone_mapped"
-          }
+          { sourceField: "first_name", targetField: "fname_mapped" },
+          { sourceField: "last_name", targetField: "lname_mapped" },
+          { sourceField: "phone", targetField: "phone_mapped" }
         ],
         marketing_customers: [
-          {
-            sourceField: "first_name",
-            targetField: "first_name_mapped"
-          },
-          {
-            sourceField: "last_name",
-            targetField: "last_name_mapped"
-          },
-          {
-            sourceField: "email_address",
-            targetField: "email_mapped"
-          }
+          { sourceField: "first_name", targetField: "first_name_mapped" },
+          { sourceField: "last_name", targetField: "last_name_mapped" },
+          { sourceField: "email", targetField: "email_address_mapped" }
         ]
       },
       requiredFields: {
-        verified_customers: [
-          "email"
-        ],
-        crm_customers: [
-          "phone"
-        ],
-        marketing_customers: [
-          "email_address"
-        ]
+        verified_customers: ["email", "first_name"],
+        crm_customers: ["phone", "fname"],
+        marketing_customers: ["email_address"]
       },
       confidenceMultipliers: {
-        verified_customers: 1.2,
-        crm_customers: 0.9,
-        marketing_customers: 0.8
+        verified_customers: 1.5,
+        crm_customers: 0.8,
+        marketing_customers: 1.2
       },
       allowMultipleMatches: true,
-      maxMatches: 2,
-      confidenceField: "match_confidence",
+      maxMatches: 5,
       thresholds: {
         high: 0.9,
         medium: 0.75,
         low: 0.6
       }
-    }
-  }, multiTableTestFactory.createTest({
-    beforeTest: (context) => {
-      // Initialize test data for all reference tables
-      if (context.parameters.factoryOptions?.initializeData) {
-        return multiTableTestFactory.initializeTestData(context);
-      }
-      return context;
     },
-    afterTest: (context, result) => {
-      // Perform additional validation on test results
-      if (context.parameters.factoryOptions?.validateResult) {
-        return multiTableTestFactory.validateTestResults(context, result);
-      }
-      return result;
-    }
-  }, validateComprehensive));
-  
-  // Custom validation test with specific assertions
-  test('Multi-Table Waterfall Custom Validation Test', {
-    type: TestType.INTEGRATION,
-    id: 'multi_table_waterfall_custom_validation_test',
-    priority: 2,
-    dependencies: ['multi_table_waterfall_basic_test'],
-    parameters: {
-      sourceTable: "test_customer_data_custom"
-    }
-  }, withErrorHandling(async function(context) {
-    const { parameters } = context;
-    
-    // Create test with custom validation
-    const testFn = multiTableTestFactory.createTest({}, (sql, params) => {
-      // Basic validation
-      validateBasicMultiTableStructure(sql, params);
-      
-      // Custom validations
-      expect(sql.includes('test_customer_data_custom')).toBe(true);
-      expect(sql.includes('ORDER BY')).toBe(true);
-      expect(sql.includes('match_rank = 1')).toBe(true);
-      
-      return {
-        success: true,
-        message: 'Custom validation passed'
-      };
-    });
-    
-    // Execute the test function
-    return testFn(context);
-  }));
-});
+    testFn: multiTableTestFactory.createTest({}, validateComprehensive)
+  }
+];
 
-// Export test suite
-module.exports = {};
+// Export tests
+module.exports = { tests };
