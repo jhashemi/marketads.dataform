@@ -1,0 +1,246 @@
+config {
+  type: "test",
+  description: "Edge case tests for historical matching",
+  tags: ["test", "matching", "historical", "edge_cases"],
+  dependencies: ["incremental_matching_test"]
+}
+
+// Import required modules
+const matcher = require("../../includes/matcher");
+const { HistoricalMatcher } = require("../../includes/historical_matcher");
+const { measureExecutionTime } = require("../../includes/utils/performance_utils");
+
+-- Create test data with edge cases
+CREATE OR REPLACE TEMPORARY TABLE edge_case_source AS
+WITH test_data AS (
+  SELECT * FROM UNNEST([
+    -- Missing data cases
+    STRUCT(
+      'S1' AS id, NULL AS first_name, 'Smith' AS last_name, 
+      NULL AS email, '123 Main St' AS address, NULL AS phone
+    ),
+    -- Special characters in names
+    STRUCT(
+      'S2' AS id, 'María-José' AS first_name, "O'Connor" AS last_name,
+      'maria@test.com' AS email, '456 Oak Ave' AS address, '555-0102' AS phone
+    ),
+    -- Multiple spaces and mixed case
+    STRUCT(
+      'S3' AS id, 'JOHN    MICHAEL' AS first_name, 'von  SCHMIDT' AS last_name,
+      'john.schmidt@test.com' AS email, '789   Pine   Rd' AS address, '555-0103' AS phone
+    ),
+    -- Unicode characters
+    STRUCT(
+      'S4' AS id, 'Søren' AS first_name, 'Björk' AS last_name,
+      'soren@test.com' AS email, '321 Æsop Lane' AS address, '555-0104' AS phone
+    ),
+    -- Numeric characters in name
+    STRUCT(
+      'S5' AS id, 'Robert2' AS first_name, '3rd' AS last_name,
+      'robert3@test.com' AS email, '567 89th St' AS address, '555-0105' AS phone
+    ),
+    -- Very long values
+    STRUCT(
+      'S6' AS id, 
+      REPEAT('John', 50) AS first_name, 
+      REPEAT('Smith', 50) AS last_name,
+      CONCAT(REPEAT('very.long.name', 20), '@test.com') AS email,
+      REPEAT('999 Long Street ', 10) AS address,
+      '555-0106' AS phone
+    ),
+    -- Empty strings
+    STRUCT(
+      'S7' AS id, '' AS first_name, '' AS last_name,
+      '' AS email, '' AS address, '' AS phone
+    ),
+    -- Whitespace only
+    STRUCT(
+      'S8' AS id, '   ' AS first_name, '  ' AS last_name,
+      '  ' AS email, '    ' AS address, '   ' AS phone
+    ),
+    -- SQL injection attempt
+    STRUCT(
+      'S9' AS id, 
+      "Robert'; DROP TABLE users;--" AS first_name,
+      "Smith' OR '1'='1" AS last_name,
+      'hack@test.com' AS email,
+      "123 Main St'; DELETE FROM addresses;--" AS address,
+      '555-0109' AS phone
+    ),
+    -- HTML/XML characters
+    STRUCT(
+      'S10' AS id,
+      '<script>John</script>' AS first_name,
+      '&Smith&' AS last_name,
+      'john&smith@test.com' AS email,
+      '<b>123</b> Main St' AS address,
+      '555-0110' AS phone
+    )
+  ])
+);
+
+-- Create historical datasets with matching edge cases
+CREATE OR REPLACE TEMPORARY TABLE historical_dataset_1 AS
+WITH test_data AS (
+  SELECT * FROM UNNEST([
+    -- Matching case for NULL values
+    STRUCT(
+      'H1' AS id, NULL AS first_name, 'Smith' AS last_name,
+      NULL AS email, '123 Main Street' AS address, NULL AS phone,
+      0.9 AS confidence_score
+    ),
+    -- Matching case for special characters
+    STRUCT(
+      'H2' AS id, 'Maria-Jose' AS first_name, 'OConnor' AS last_name,
+      'maria@test.com' AS email, '456 Oak Avenue' AS address, '555-0102' AS phone,
+      0.85 AS confidence_score
+    ),
+    -- Non-matching case with similar special characters
+    STRUCT(
+      'H3' AS id, 'María José' AS first_name, "O'Conner" AS last_name,
+      'maria.jose@test.com' AS email, '456 Oak Ave' AS address, '555-0102' AS phone,
+      0.7 AS confidence_score
+    )
+  ])
+);
+
+CREATE OR REPLACE TEMPORARY TABLE historical_dataset_2 AS
+WITH test_data AS (
+  SELECT * FROM UNNEST([
+    -- Matching case for Unicode
+    STRUCT(
+      'H4' AS id, 'Soren' AS first_name, 'Bjork' AS last_name,
+      'soren@test.com' AS email, '321 Aesop Lane' AS address, '555-0104' AS phone,
+      0.95 AS confidence_score
+    ),
+    -- Matching case for numeric characters
+    STRUCT(
+      'H5' AS id, 'Robert2nd' AS first_name, 'Third' AS last_name,
+      'robert3@test.com' AS email, '567 89th Street' AS address, '555-0105' AS phone,
+      0.8 AS confidence_score
+    )
+  ])
+);
+
+-- Test historical matcher with edge cases
+${
+  (() => {
+    const historicalMatcher = new HistoricalMatcher({
+      sourceTable: 'edge_case_source',
+      historicalDatasets: [
+        {
+          table: 'historical_dataset_1',
+          quality: 0.95,
+          weightMultiplier: 1.0,
+          fieldMappings: {
+            firstName: 'first_name',
+            lastName: 'last_name',
+            email: 'email',
+            address: 'address',
+            phone: 'phone',
+            confidenceScore: 'confidence_score'
+          }
+        },
+        {
+          table: 'historical_dataset_2',
+          quality: 0.90,
+          weightMultiplier: 0.95,
+          fieldMappings: {
+            firstName: 'first_name',
+            lastName: 'last_name',
+            email: 'email',
+            address: 'address',
+            phone: 'phone',
+            confidenceScore: 'confidence_score'
+          }
+        }
+      ],
+      fieldMappings: {
+        firstName: 'first_name',
+        lastName: 'last_name',
+        email: 'email',
+        address: 'address',
+        phone: 'phone'
+      },
+      matchingRules: {
+        name: { weight: 2.0 },
+        address: { weight: 1.5 },
+        contact: { weight: 1.0 }
+      },
+      kpiConfig: {
+        targetMatchRate: 0.7,
+        confidenceThreshold: 0.6
+      }
+    });
+
+    return historicalMatcher.generateHistoricalMatchSql('edge_case_source', 'current_match_rate');
+  })()
+}
+
+-- Validate results
+WITH validation AS (
+  SELECT
+    -- Count total source records
+    (SELECT COUNT(*) FROM edge_case_source) AS total_source_records,
+    
+    -- Count matches with NULL values
+    (SELECT COUNT(*) 
+     FROM best_historical_matches m
+     JOIN edge_case_source s ON s.id = m.source_record_id
+     WHERE s.first_name IS NULL
+    ) AS null_value_matches,
+    
+    -- Count matches with special characters
+    (SELECT COUNT(*) 
+     FROM best_historical_matches m
+     JOIN edge_case_source s ON s.id = m.source_record_id
+     WHERE s.first_name LIKE '%-%' OR s.last_name LIKE '%''%'
+    ) AS special_char_matches,
+    
+    -- Count matches with Unicode characters
+    (SELECT COUNT(*) 
+     FROM best_historical_matches m
+     JOIN edge_case_source s ON s.id = m.source_record_id
+     WHERE s.first_name IN ('Søren', 'Björk')
+    ) AS unicode_matches,
+    
+    -- Count matches with numeric characters
+    (SELECT COUNT(*) 
+     FROM best_historical_matches m
+     JOIN edge_case_source s ON s.id = m.source_record_id
+     WHERE s.first_name LIKE '%[0-9]%' OR s.last_name LIKE '%[0-9]%'
+    ) AS numeric_matches,
+    
+    -- Check for SQL injection safety
+    (SELECT COUNT(*) 
+     FROM best_historical_matches m
+     JOIN edge_case_source s ON s.id = m.source_record_id
+     WHERE s.first_name LIKE '%DROP%' OR s.first_name LIKE '%;--%'
+    ) AS sql_injection_handled,
+    
+    -- Check for HTML/XML character handling
+    (SELECT COUNT(*) 
+     FROM best_historical_matches m
+     JOIN edge_case_source s ON s.id = m.source_record_id
+     WHERE s.first_name LIKE '%<%' OR s.first_name LIKE '%>%'
+    ) AS html_char_handled
+)
+SELECT
+  CASE
+    WHEN null_value_matches > 0 
+      AND special_char_matches > 0 
+      AND unicode_matches > 0 
+      AND numeric_matches > 0
+      AND sql_injection_handled > 0
+      AND html_char_handled > 0
+      THEN 'PASS: All edge cases handled correctly'
+    ELSE 'FAIL: Some edge cases not handled properly'
+  END AS test_result,
+  total_source_records,
+  null_value_matches,
+  special_char_matches,
+  unicode_matches,
+  numeric_matches,
+  sql_injection_handled,
+  html_char_handled
+FROM validation; 

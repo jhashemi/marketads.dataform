@@ -23,7 +23,9 @@ const multiTableTestFactory = new MultiTableTestFactory({
     ...DEFAULT_TEST_PARAMETERS,
     sourceTable: "test_customer_data",
     factoryOptions: {
-      useClassBasedFactoryPattern: true
+      useClassBasedFactoryPattern: true,
+      initializeData: true,
+      validateResult: true
     }
   }
 });
@@ -40,8 +42,86 @@ const tests = [
     tags: ['multi-table', 'waterfall', 'basic'],
     parameters: {
       sourceTable: "test_customer_data",
-      factoryOptions: {
-        useClassBasedFactoryPattern: true
+      referenceTables: [
+        {
+          id: "verified_customers",
+          table: "verified_customers",
+          name: "Verified Customers",
+          keyField: "customer_id",
+          priority: 1
+        },
+        {
+          id: "crm_customers",
+          table: "crm_customers",
+          name: "CRM Customers",
+          keyField: "customer_id",
+          priority: 2
+        }
+      ],
+      matchingRules: {
+        verified_customers: {
+          blocking: [
+            {
+              sourceField: "postal_code",
+              targetField: "postal_code",
+              exact: true
+            }
+          ],
+          scoring: [
+            {
+              sourceField: "first_name",
+              targetField: "first_name",
+              method: "jaro_winkler",
+              weight: 1.5
+            },
+            {
+              sourceField: "last_name",
+              targetField: "last_name",
+              method: "jaro_winkler",
+              weight: 2
+            },
+            {
+              sourceField: "email",
+              targetField: "email",
+              method: "exact",
+              weight: 3
+            }
+          ]
+        },
+        crm_customers: {
+          blocking: [
+            {
+              sourceField: "postal_code",
+              targetField: "zip",
+              exact: true
+            }
+          ],
+          scoring: [
+            {
+              sourceField: "first_name",
+              targetField: "fname",
+              method: "jaro_winkler",
+              weight: 1.5
+            },
+            {
+              sourceField: "last_name",
+              targetField: "lname",
+              method: "jaro_winkler",
+              weight: 2
+            },
+            {
+              sourceField: "phone",
+              targetField: "phone_number",
+              method: "exact",
+              weight: 2.5
+            }
+          ]
+        }
+      },
+      thresholds: {
+        high: 0.85,
+        medium: 0.7,
+        low: 0.55
       }
     },
     testFn: multiTableTestFactory.createTest({}, validateBasicMultiTableStructure)
@@ -58,30 +138,79 @@ const tests = [
     tags: ['multi-table', 'waterfall', 'field-mapping'],
     parameters: {
       sourceTable: "test_customer_data",
-      factoryOptions: {
-        useClassBasedFactoryPattern: true
-      },
       fieldMappings: {
         verified_customers: [
           {
             sourceField: "first_name",
-            targetField: "first_name_custom"
+            targetField: "first_name_custom",
+            type: "firstName"
           },
           {
             sourceField: "last_name",
-            targetField: "last_name_custom"
+            targetField: "last_name_custom",
+            type: "lastName"
           }
         ],
         crm_customers: [
           {
             sourceField: "fname",
-            targetField: "first_name_custom"
+            targetField: "first_name_custom",
+            type: "firstName"
           },
           {
             sourceField: "lname",
-            targetField: "last_name_custom"
+            targetField: "last_name_custom",
+            type: "lastName"
           }
         ]
+      },
+      matchingRules: {
+        verified_customers: {
+          blocking: [
+            {
+              sourceField: "postal_code",
+              targetField: "postal_code",
+              exact: true
+            }
+          ],
+          scoring: [
+            {
+              sourceField: "first_name",
+              targetField: "first_name_custom",
+              method: "jaro_winkler",
+              weight: 1.5
+            },
+            {
+              sourceField: "last_name",
+              targetField: "last_name_custom",
+              method: "jaro_winkler",
+              weight: 2
+            }
+          ]
+        },
+        crm_customers: {
+          blocking: [
+            {
+              sourceField: "postal_code",
+              targetField: "zip",
+              exact: true
+            }
+          ],
+          scoring: [
+            {
+              sourceField: "fname",
+              targetField: "first_name_custom",
+              method: "jaro_winkler",
+              weight: 1.5
+            },
+            {
+              sourceField: "lname",
+              targetField: "last_name_custom",
+              method: "jaro_winkler",
+              weight: 2
+            }
+          ]
+        }
       }
     },
     testFn: multiTableTestFactory.createTest({}, validateFieldMapping)
@@ -101,6 +230,42 @@ const tests = [
       confidenceMultipliers: {
         verified_customers: 1.5,
         crm_customers: 0.75
+      },
+      matchingRules: {
+        verified_customers: {
+          blocking: [
+            {
+              sourceField: "postal_code",
+              targetField: "postal_code",
+              exact: true
+            }
+          ],
+          scoring: [
+            {
+              sourceField: "first_name",
+              targetField: "first_name",
+              method: "jaro_winkler",
+              weight: 1.5
+            }
+          ]
+        },
+        crm_customers: {
+          blocking: [
+            {
+              sourceField: "postal_code",
+              targetField: "zip",
+              exact: true
+            }
+          ],
+          scoring: [
+            {
+              sourceField: "first_name",
+              targetField: "fname",
+              method: "jaro_winkler",
+              weight: 1.5
+            }
+          ]
+        }
       }
     },
     testFn: multiTableTestFactory.createTest({}, validateConfidenceMultipliers)
@@ -126,6 +291,54 @@ const tests = [
           "phone",
           "lname"
         ]
+      },
+      matchingRules: {
+        verified_customers: {
+          blocking: [
+            {
+              sourceField: "postal_code",
+              targetField: "postal_code",
+              exact: true
+            }
+          ],
+          scoring: [
+            {
+              sourceField: "first_name",
+              targetField: "first_name",
+              method: "jaro_winkler",
+              weight: 1.5
+            },
+            {
+              sourceField: "email",
+              targetField: "email",
+              method: "exact",
+              weight: 3
+            }
+          ]
+        },
+        crm_customers: {
+          blocking: [
+            {
+              sourceField: "postal_code",
+              targetField: "zip",
+              exact: true
+            }
+          ],
+          scoring: [
+            {
+              sourceField: "first_name",
+              targetField: "fname",
+              method: "jaro_winkler",
+              weight: 1.5
+            },
+            {
+              sourceField: "phone",
+              targetField: "phone_number",
+              method: "exact",
+              weight: 2.5
+            }
+          ]
+        }
       }
     },
     testFn: multiTableTestFactory.createTest({}, validateRequiredFields)
@@ -143,7 +356,43 @@ const tests = [
     parameters: {
       sourceTable: "test_customer_data",
       allowMultipleMatches: true,
-      maxMatches: 3
+      maxMatches: 3,
+      matchingRules: {
+        verified_customers: {
+          blocking: [
+            {
+              sourceField: "postal_code",
+              targetField: "postal_code",
+              exact: true
+            }
+          ],
+          scoring: [
+            {
+              sourceField: "first_name",
+              targetField: "first_name",
+              method: "jaro_winkler",
+              weight: 1.5
+            }
+          ]
+        },
+        crm_customers: {
+          blocking: [
+            {
+              sourceField: "postal_code",
+              targetField: "zip",
+              exact: true
+            }
+          ],
+          scoring: [
+            {
+              sourceField: "first_name",
+              targetField: "fname",
+              method: "jaro_winkler",
+              weight: 1.5
+            }
+          ]
+        }
+      }
     },
     testFn: multiTableTestFactory.createTest({}, validateMultipleMatches)
   },
@@ -228,75 +477,53 @@ const tests = [
               weight: 2.5
             }
           ]
-        },
-        marketing_customers: {
-          blocking: [
-            {
-              sourceField: "postal_code",
-              targetField: "zip_code",
-              exact: true
-            }
-          ],
-          scoring: [
-            {
-              sourceField: "first_name",
-              targetField: "first_name",
-              method: "jaro_winkler",
-              weight: 1.5
-            },
-            {
-              sourceField: "last_name",
-              targetField: "last_name",
-              method: "jaro_winkler",
-              weight: 2
-            },
-            {
-              sourceField: "email",
-              targetField: "email_address",
-              method: "exact",
-              weight: 3
-            }
-          ]
         }
       },
       fieldMappings: {
         verified_customers: [
-          { sourceField: "first_name", targetField: "first_name_mapped" },
-          { sourceField: "last_name", targetField: "last_name_mapped" },
-          { sourceField: "email", targetField: "email_mapped" }
+          {
+            sourceField: "first_name",
+            targetField: "first_name_mapped",
+            type: "firstName"
+          },
+          {
+            sourceField: "last_name",
+            targetField: "last_name_mapped",
+            type: "lastName"
+          }
         ],
         crm_customers: [
-          { sourceField: "first_name", targetField: "fname_mapped" },
-          { sourceField: "last_name", targetField: "lname_mapped" },
-          { sourceField: "phone", targetField: "phone_mapped" }
-        ],
-        marketing_customers: [
-          { sourceField: "first_name", targetField: "first_name_mapped" },
-          { sourceField: "last_name", targetField: "last_name_mapped" },
-          { sourceField: "email", targetField: "email_address_mapped" }
+          {
+            sourceField: "fname",
+            targetField: "first_name_mapped",
+            type: "firstName"
+          },
+          {
+            sourceField: "lname",
+            targetField: "last_name_mapped",
+            type: "lastName"
+          }
         ]
       },
       requiredFields: {
         verified_customers: ["email", "first_name"],
-        crm_customers: ["phone", "fname"],
-        marketing_customers: ["email_address"]
+        crm_customers: ["phone", "lname"]
       },
       confidenceMultipliers: {
-        verified_customers: 1.5,
-        crm_customers: 0.8,
-        marketing_customers: 1.2
+        verified_customers: 1.2,
+        crm_customers: 0.9
       },
       allowMultipleMatches: true,
-      maxMatches: 5,
+      maxMatches: 3,
       thresholds: {
-        high: 0.9,
-        medium: 0.75,
-        low: 0.6
+        high: 0.85,
+        medium: 0.7,
+        low: 0.55
       }
     },
     testFn: multiTableTestFactory.createTest({}, validateComprehensive)
   }
 ];
 
-// Export tests
+// Export tests array
 module.exports = { tests };

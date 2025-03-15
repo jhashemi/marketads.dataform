@@ -1,0 +1,128 @@
+config {
+  type: "test",
+  tags: ["test", "statistics", "performance"],
+  description: "Tests for query statistics and sampling functions",
+  dependencies: []
+}
+
+-- Create test data
+CREATE OR REPLACE TEMPORARY TABLE test_source AS
+WITH numbers AS (
+  SELECT ROW_NUMBER() OVER() as n 
+  FROM UNNEST(GENERATE_ARRAY(1, 100000))
+),
+test_data AS (
+  SELECT 
+    n as id,
+    CONCAT('User', CAST(n % 1000 AS STRING)) as user_name,
+    CASE 
+      WHEN n % 10 = 0 THEN NULL 
+      ELSE CONCAT('email', CAST(n % 5000 AS STRING), '@test.com')
+    END as email,
+    TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL n MINUTE) as created_at
+  FROM numbers
+)
+SELECT * FROM test_data;
+
+-- Create test target for join statistics
+CREATE OR REPLACE TEMPORARY TABLE test_target AS
+SELECT 
+  id,
+  user_name,
+  CONCAT('alt_email', CAST(id % 2000 AS STRING), '@test.com') as email
+FROM test_source
+WHERE id % 3 = 0;
+
+-- Test table statistics collection
+CREATE OR REPLACE TEMPORARY TABLE test_source_stats AS
+WITH sampled_data AS (
+  SELECT *
+  FROM test_source
+  TABLESAMPLE SYSTEM (1 PERCENT)
+),
+column_stats AS (
+  SELECT
+    'test_source' as table_name,
+    CURRENT_TIMESTAMP() as collected_at,
+    COUNT(*) as total_rows,
+    APPROX_COUNT_DISTINCT(*) as approx_distinct_rows,
+    STRUCT(
+      'user_name' as column_name,
+      APPROX_COUNT_DISTINCT(user_name) as distinct_values,
+      COUNTIF(user_name IS NULL) as null_count,
+      MIN(user_name) as min_value,
+      MAX(user_name) as max_value
+    ) as user_name_stats,
+    STRUCT(
+      'email' as column_name,
+      APPROX_COUNT_DISTINCT(email) as distinct_values,
+      COUNTIF(email IS NULL) as null_count,
+      MIN(email) as min_value,
+      MAX(email) as max_value
+    ) as email_stats
+  FROM sampled_data
+)
+SELECT * FROM column_stats;
+
+-- Test join statistics collection
+CREATE OR REPLACE TEMPORARY TABLE test_join_stats AS
+WITH join_stats AS (
+  SELECT
+    'test_source' as source_table,
+    'test_target' as target_table,
+    CURRENT_TIMESTAMP() as collected_at,
+    STRUCT(
+      'id' as join_key,
+      APPROX_COUNT_DISTINCT(s.id) as source_distinct,
+      APPROX_COUNT_DISTINCT(t.id) as target_distinct,
+      APPROX_QUANTILES(s.id, 100) as source_distribution,
+      APPROX_QUANTILES(t.id, 100) as target_distribution
+    ) as id_stats,
+    STRUCT(
+      'email' as join_key,
+      APPROX_COUNT_DISTINCT(s.email) as source_distinct,
+      APPROX_COUNT_DISTINCT(t.email) as target_distinct,
+      APPROX_QUANTILES(s.email, 100) as source_distribution,
+      APPROX_QUANTILES(t.email, 100) as target_distribution
+    ) as email_stats
+  FROM test_source s
+  FULL OUTER JOIN test_target t
+  ON s.id = t.id
+)
+SELECT * FROM join_stats;
+
+-- Test approximate aggregations
+CREATE OR REPLACE TEMPORARY TABLE test_aggregations AS
+SELECT
+  APPROX_COUNT_DISTINCT(user_name) as distinct_users,
+  APPROX_QUANTILES(id, 100) as id_distribution,
+  APPROX_TOP_COUNT(email, 10) as top_emails
+FROM test_source;
+
+-- Validate results
+WITH validation AS (
+  SELECT
+    -- Validate table statistics
+    (SELECT COUNT(*) FROM test_source) as actual_rows,
+    (SELECT total_rows FROM test_source_stats) as sampled_rows,
+    -- Validate join statistics
+    (SELECT source_distinct FROM test_join_stats, UNNEST([id_stats])) as source_distinct_ids,
+    (SELECT target_distinct FROM test_join_stats, UNNEST([id_stats])) as target_distinct_ids,
+    -- Validate approximate aggregations
+    (SELECT distinct_users FROM test_aggregations) as approx_distinct_users,
+    (SELECT COUNT(DISTINCT user_name) FROM test_source) as actual_distinct_users
+)
+SELECT
+  CASE
+    WHEN ABS(actual_rows - sampled_rows * 100) / actual_rows <= 0.1 THEN 'PASS'
+    ELSE 'FAIL'
+  END as sampling_test,
+  CASE
+    WHEN source_distinct_ids > target_distinct_ids THEN 'PASS'
+    ELSE 'FAIL'
+  END as join_stats_test,
+  CASE
+    WHEN ABS(approx_distinct_users - actual_distinct_users) / actual_distinct_users <= 0.02 THEN 'PASS'
+    ELSE 'FAIL'
+  END as approximation_test
+FROM validation; 

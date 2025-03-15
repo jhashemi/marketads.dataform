@@ -1,0 +1,220 @@
+config {
+  type: "test",
+  description: "Comprehensive incremental matching performance test",
+  tags: ["test", "matching", "incremental", "performance"],
+  dependencies: ["incremental_matching_test", "performance_test"]
+}
+
+// Import required modules
+const matcher = require("../../includes/matcher");
+const { measureExecutionTime, trackCpuUtilization } = require("../../includes/utils/performance_utils");
+
+-- Initialize performance tracking
+CREATE OR REPLACE TEMPORARY TABLE perf_metrics AS
+SELECT CURRENT_TIMESTAMP() AS test_start_time;
+
+-- Generate initial large dataset
+CREATE OR REPLACE TEMPORARY TABLE perf_source_base AS
+WITH RECURSIVE
+names AS (
+  SELECT name FROM UNNEST([
+    'John', 'Jane', 'Michael', 'Sarah', 'David', 'Emily', 'Robert', 'Jennifer',
+    'William', 'Elizabeth', 'James', 'Mary', 'Richard', 'Patricia', 'Joseph',
+    'Linda', 'Thomas', 'Barbara', 'Charles', 'Susan'
+  ]) AS name
+),
+last_names AS (
+  SELECT name FROM UNNEST([
+    'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller',
+    'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez',
+    'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin'
+  ]) AS name
+),
+domains AS (
+  SELECT domain FROM UNNEST([
+    'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'example.com'
+  ]) AS domain
+),
+synthetic_data AS (
+  SELECT
+    CONCAT('S', CAST(ROW_NUMBER() OVER() AS STRING)) AS id,
+    n.name AS first_name,
+    l.name AS last_name,
+    LOWER(CONCAT(n.name, '.', l.name, '@', d.domain)) AS email,
+    CURRENT_TIMESTAMP() AS created_at,
+    CURRENT_TIMESTAMP() AS updated_at
+  FROM names n
+  CROSS JOIN last_names l
+  CROSS JOIN domains d
+)
+SELECT * FROM synthetic_data
+LIMIT 5000;
+
+-- Create target dataset with variations
+CREATE OR REPLACE TEMPORARY TABLE perf_target_base AS
+WITH source_data AS (
+  SELECT * FROM perf_source_base
+),
+variations AS (
+  SELECT
+    id,
+    -- Add common variations/typos
+    CASE 
+      WHEN RAND() < 0.1 THEN CONCAT(SUBSTR(first_name, 1, LENGTH(first_name)-1), 'y')
+      WHEN RAND() < 0.2 THEN REPLACE(first_name, 'll', 'l')
+      ELSE first_name
+    END AS firstname,
+    CASE
+      WHEN RAND() < 0.1 THEN CONCAT(last_name, 'son')
+      WHEN RAND() < 0.2 THEN REPLACE(last_name, 'ez', 'es')
+      ELSE last_name
+    END AS lastname,
+    email AS email_address,
+    CONCAT('CUST-', LPAD(CAST(FLOOR(RAND() * 1000000) AS STRING), 6, '0')) AS customer_id
+  FROM source_data
+)
+SELECT * FROM variations;
+
+-- Run initial matching and measure performance
+${
+  measureExecutionTime(
+    matcher.waterfall({
+      sourceTable: 'perf_source_base',
+      targetTable: 'perf_target_base',
+      fieldMappings: {
+        firstName: {source: "first_name", target: "firstname"},
+        lastName: {source: "last_name", target: "lastname"},
+        email: {source: "email", target: "email_address"}
+      },
+      appendFields: ["customer_id"],
+      outputTable: 'perf_match_results_base'
+    }),
+    'initial_match'
+  )
+}
+
+-- Record initial matching metrics
+INSERT INTO perf_metrics (
+  SELECT
+    test_start_time,
+    CURRENT_TIMESTAMP() AS phase1_end_time,
+    (SELECT COUNT(*) FROM perf_source_base) AS initial_source_count,
+    (SELECT COUNT(*) FROM perf_match_results_base WHERE reference_id IS NOT NULL) AS initial_matched_count,
+    TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), test_start_time, MILLISECOND) AS initial_duration_ms
+);
+
+-- Create incremental updates
+CREATE OR REPLACE TEMPORARY TABLE perf_source_updates AS
+WITH updates AS (
+  SELECT
+    id,
+    -- Modify some existing records
+    CASE
+      WHEN RAND() < 0.3 THEN CONCAT(first_name, CASE 
+        WHEN RAND() < 0.5 THEN 'son'
+        ELSE 'ton'
+      END)
+      ELSE first_name
+    END AS first_name,
+    last_name,
+    email,
+    created_at,
+    TIMESTAMP_ADD(updated_at, INTERVAL 1 DAY) AS updated_at
+  FROM perf_source_base
+  WHERE RAND() < 0.2 -- Update 20% of records
+),
+new_records AS (
+  -- Add completely new records
+  SELECT
+    CONCAT('SN', CAST(ROW_NUMBER() OVER() AS STRING)) AS id,
+    n.name AS first_name,
+    l.name AS last_name,
+    LOWER(CONCAT(n.name, '.', l.name, '@', d.domain)) AS email,
+    CURRENT_TIMESTAMP() AS created_at,
+    TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 1 DAY) AS updated_at
+  FROM names n
+  CROSS JOIN last_names l
+  CROSS JOIN domains d
+  LIMIT 1000 -- Add 1000 new records
+)
+SELECT * FROM updates
+UNION ALL
+SELECT * FROM new_records;
+
+-- Run incremental matching with performance tracking
+${
+  trackCpuUtilization(
+    matcher.incremental({
+      sourceTable: 'perf_source_updates',
+      targetTable: 'perf_target_base',
+      fieldMappings: {
+        firstName: {source: "first_name", target: "firstname"},
+        lastName: {source: "last_name", target: "lastname"},
+        email: {source: "email", target: "email_address"}
+      },
+      appendFields: ["customer_id"],
+      outputTable: 'perf_match_results_final',
+      incrementalField: 'updated_at',
+      lookbackDays: 2
+    }),
+    'incremental_match'
+  )
+}
+
+-- Calculate and validate final metrics
+WITH validation AS (
+  SELECT
+    (SELECT COUNT(*) FROM perf_source_updates) AS update_count,
+    (SELECT COUNT(*) FROM perf_match_results_final WHERE reference_id IS NOT NULL) AS final_matched_count,
+    TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), 
+      (SELECT phase1_end_time FROM perf_metrics), 
+      MILLISECOND) AS incremental_duration_ms
+)
+SELECT
+  CASE
+    WHEN update_count = 0 THEN 'FAIL: No updates processed'
+    WHEN final_matched_count < (SELECT initial_matched_count FROM perf_metrics)
+      THEN 'FAIL: Lost matches after incremental update'
+    WHEN incremental_duration_ms > 
+      (SELECT initial_duration_ms * 0.5 FROM perf_metrics)
+      THEN 'FAIL: Incremental matching too slow'
+    ELSE 'PASS: Incremental matching performed within expectations'
+  END AS validation_result,
+  update_count,
+  final_matched_count,
+  incremental_duration_ms,
+  CONCAT(
+    'Processed ', 
+    CAST(update_count AS STRING),
+    ' updates in ',
+    CAST(incremental_duration_ms/1000 AS STRING),
+    ' seconds'
+  ) AS performance_summary
+FROM validation;
+
+-- Generate detailed performance report
+SELECT
+  'Initial Matching' AS phase,
+  initial_source_count AS records_processed,
+  initial_matched_count AS matches_found,
+  initial_duration_ms AS duration_ms,
+  ROUND(initial_matched_count * 100.0 / initial_source_count, 2) AS match_rate_pct,
+  ROUND(initial_source_count * 1000.0 / initial_duration_ms, 2) AS records_per_second
+FROM perf_metrics
+UNION ALL
+SELECT
+  'Incremental Matching' AS phase,
+  update_count AS records_processed,
+  final_matched_count - initial_matched_count AS matches_found,
+  incremental_duration_ms AS duration_ms,
+  ROUND((final_matched_count - initial_matched_count) * 100.0 / update_count, 2) AS match_rate_pct,
+  ROUND(update_count * 1000.0 / incremental_duration_ms, 2) AS records_per_second
+FROM (
+  SELECT
+    (SELECT COUNT(*) FROM perf_source_updates) AS update_count,
+    (SELECT COUNT(*) FROM perf_match_results_final WHERE reference_id IS NOT NULL) AS final_matched_count,
+    TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), 
+      (SELECT phase1_end_time FROM perf_metrics),
+      MILLISECOND) AS incremental_duration_ms
+) metrics
+CROSS JOIN perf_metrics; 

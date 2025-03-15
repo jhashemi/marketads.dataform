@@ -1,0 +1,160 @@
+config {
+  type: "test",
+  name: "error_handling_test",
+  description: "Comprehensive test suite for error handling and validation",
+  tags: ["unit", "error-handling"]
+}
+
+-- Create test data with various edge cases
+CREATE TEMP TABLE test_source_data AS
+SELECT * FROM (
+  VALUES
+    ('1', 'John', 'Doe', 'john@example.com', '2023-01-01'),  -- Valid record
+    ('2', NULL, NULL, NULL, NULL),  -- All NULL fields
+    ('3', '', '', '', ''),  -- Empty strings
+    ('4', '   ', '   ', '   ', '2023-01-01'),  -- Whitespace only
+    ('5', 'John<script>', 'Doe--', 'not-an-email', 'invalid-date'),  -- Invalid formats
+    ('6', REPEAT('a', 1000), 'Doe', 'email@test.com', '2023-01-01'),  -- Oversized field
+    ('7', '123', '456', '789', '2023-01-01'),  -- Numeric in text fields
+    ('8', 'María-José', 'O''Connor', 'test@test.com', '2023-01-01'),  -- Special characters
+    ('9', 'John', 'Doe', 'john@example.com', '2023-01-01'),  -- Duplicate record
+    ('10', 'DROP TABLE users;--', 'Smith', 'email@test.com', '2023-01-01')  -- SQL injection attempt
+) AS t (id, first_name, last_name, email, created_at);
+
+-- Test validation error handling
+CREATE TEMP TABLE validation_error_test AS
+SELECT
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 
+      FROM test_source_data 
+      WHERE id IS NULL 
+      OR TRIM(id) = ''
+    ) THEN 'VALIDATION_ERROR: Missing ID'
+    WHEN EXISTS (
+      SELECT 1 
+      FROM test_source_data 
+      WHERE email IS NOT NULL 
+      AND email NOT LIKE '%@%.%'
+    ) THEN 'VALIDATION_ERROR: Invalid email format'
+    WHEN EXISTS (
+      SELECT 1 
+      FROM test_source_data 
+      WHERE LENGTH(first_name) > 100
+    ) THEN 'VALIDATION_ERROR: First name too long'
+    ELSE 'PASS'
+  END as validation_result;
+
+-- Test configuration error handling
+CREATE TEMP TABLE config_error_test AS
+SELECT
+  CASE 
+    WHEN NOT EXISTS (
+      SELECT 1 
+      FROM test_source_data 
+      LIMIT 1
+    ) THEN 'CONFIGURATION_ERROR: Empty source table'
+    WHEN NOT EXISTS (
+      SELECT column_name 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE table_name = 'test_source_data'
+      AND column_name IN ('id', 'first_name', 'last_name', 'email')
+    ) THEN 'CONFIGURATION_ERROR: Missing required columns'
+    ELSE 'PASS'
+  END as config_result;
+
+-- Test execution error handling
+CREATE TEMP TABLE execution_error_test AS
+SELECT
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 
+      FROM test_source_data 
+      WHERE created_at IS NOT NULL 
+      AND created_at NOT LIKE '____-__-__'
+    ) THEN 'EXECUTION_ERROR: Invalid date format'
+    WHEN EXISTS (
+      SELECT 1 
+      FROM test_source_data 
+      GROUP BY id 
+      HAVING COUNT(*) > 1
+    ) THEN 'EXECUTION_ERROR: Duplicate IDs found'
+    ELSE 'PASS'
+  END as execution_result;
+
+-- Test data error handling
+CREATE TEMP TABLE data_error_test AS
+SELECT
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 
+      FROM test_source_data 
+      WHERE first_name LIKE '%<script>%'
+      OR last_name LIKE '%<script>%'
+    ) THEN 'DATA_ERROR: Potential XSS detected'
+    WHEN EXISTS (
+      SELECT 1 
+      FROM test_source_data 
+      WHERE first_name LIKE '%DROP%'
+      OR last_name LIKE '%DROP%'
+    ) THEN 'DATA_ERROR: Potential SQL injection detected'
+    ELSE 'PASS'
+  END as data_result;
+
+-- Test system error handling
+CREATE TEMP TABLE system_error_test AS
+SELECT
+  CASE 
+    WHEN (
+      SELECT COUNT(*) 
+      FROM test_source_data
+    ) > 1000000 THEN 'SYSTEM_ERROR: Dataset too large'
+    WHEN EXISTS (
+      SELECT 1 
+      FROM test_source_data 
+      WHERE LENGTH(first_name) + LENGTH(last_name) + LENGTH(email) > 5000
+    ) THEN 'SYSTEM_ERROR: Record size exceeds limit'
+    ELSE 'PASS'
+  END as system_result;
+
+-- Test performance logging
+CREATE TEMP TABLE performance_log_test AS
+SELECT
+  TIMESTAMP_DIFF(
+    CURRENT_TIMESTAMP(),
+    TIMESTAMP '2023-01-01 00:00:00',
+    MILLISECOND
+  ) as execution_time_ms,
+  (
+    SELECT COUNT(*) 
+    FROM test_source_data
+  ) as records_processed;
+
+-- Aggregate test results
+WITH test_results AS (
+  SELECT 'Validation' as test_type, validation_result as result FROM validation_error_test
+  UNION ALL
+  SELECT 'Configuration' as test_type, config_result as result FROM config_error_test
+  UNION ALL
+  SELECT 'Execution' as test_type, execution_result as result FROM execution_error_test
+  UNION ALL
+  SELECT 'Data' as test_type, data_result as result FROM data_error_test
+  UNION ALL
+  SELECT 'System' as test_type, system_result as result FROM system_error_test
+)
+
+-- Return final test results
+SELECT
+  test_type,
+  result,
+  result = 'PASS' as passed,
+  CURRENT_TIMESTAMP() as test_timestamp,
+  (
+    SELECT STRUCT(
+      execution_time_ms,
+      records_processed
+    ) 
+    FROM performance_log_test
+  ) as performance_metrics
+FROM test_results
+ORDER BY test_type; 
