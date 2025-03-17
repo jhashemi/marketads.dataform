@@ -1,1 +1,466 @@
- 
+config {
+  type: "test",
+  description: "Comprehensive performance test that tests multiple performance aspects in one test",
+  tags: ["test", "performance", "comprehensive"],
+  dependencies: [
+    "performance_test", 
+    "performance_optimization_test", 
+    "incremental_performance_test"
+  ]
+}
+
+// Import the performance utilities
+const { PerformanceTracker } = require("../../includes/utils/performance_tracker");
+const { ResourceMonitor } = require("../../includes/utils/resource_monitor");
+const { matcher } = require("../../includes/matcher");
+const { TransitiveMatcher } = require("../../includes/transitive_matcher");
+
+// Initialize performance tracker and resource monitor
+const performanceTracker = new PerformanceTracker();
+const resourceMonitor = new ResourceMonitor();
+
+-- Set up test parameters
+CREATE OR REPLACE TEMPORARY TABLE test_parameters AS
+SELECT
+  10000 AS source_record_count,
+  12000 AS target_record_count,
+  20 AS additional_fields_count,
+  3 AS num_iterations,
+  'waterfall' AS primary_strategy,
+  'hybrid' AS secondary_strategy,
+  true AS enable_clustering,
+  true AS enable_partitioning,
+  'customer_id' AS partition_field,
+  0.75 AS match_threshold;
+
+-- Start tracking performance and resources
+${
+  performanceTracker.start('comprehensive_test');
+  resourceMonitor.start();
+}
+
+-- Generate synthetic test data with variable size and complexity
+-- Large source table with multiple field types and values
+CREATE OR REPLACE TEMPORARY TABLE comprehensive_source AS
+WITH 
+  -- First generate base names to work with
+  names AS (
+    SELECT 'John' AS first_name, 'Smith' AS last_name
+    UNION ALL SELECT 'Jane' AS first_name, 'Doe' AS last_name
+    UNION ALL SELECT 'Michael' AS first_name, 'Johnson' AS last_name
+    UNION ALL SELECT 'Sarah' AS first_name, 'Williams' AS last_name
+    UNION ALL SELECT 'David' AS first_name, 'Brown' AS last_name
+    UNION ALL SELECT 'Emily' AS first_name, 'Jones' AS last_name
+    UNION ALL SELECT 'Robert' AS first_name, 'Miller' AS last_name
+    UNION ALL SELECT 'Jennifer' AS first_name, 'Davis' AS last_name
+    UNION ALL SELECT 'William' AS first_name, 'Garcia' AS last_name
+    UNION ALL SELECT 'Elizabeth' AS first_name, 'Rodriguez' AS last_name
+    -- Add more names to increase diversity
+    UNION ALL SELECT 'James' AS first_name, 'Wilson' AS last_name
+    UNION ALL SELECT 'Maria' AS first_name, 'Martinez' AS last_name
+    UNION ALL SELECT 'Daniel' AS first_name, 'Anderson' AS last_name
+    UNION ALL SELECT 'Jessica' AS first_name, 'Taylor' AS last_name
+    UNION ALL SELECT 'Christopher' AS first_name, 'Thomas' AS last_name
+    UNION ALL SELECT 'Ashley' AS first_name, 'Hernandez' AS last_name
+    UNION ALL SELECT 'Joshua' AS first_name, 'Moore' AS last_name
+    UNION ALL SELECT 'Amanda' AS first_name, 'Martin' AS last_name
+    UNION ALL SELECT 'Matthew' AS first_name, 'Jackson' AS last_name
+    UNION ALL SELECT 'Stephanie' AS first_name, 'Thompson' AS last_name
+  ),
+  -- Generate domains for email addresses
+  domains AS (
+    SELECT 'example.com' AS domain
+    UNION ALL SELECT 'gmail.com' AS domain
+    UNION ALL SELECT 'outlook.com' AS domain
+    UNION ALL SELECT 'yahoo.com' AS domain
+    UNION ALL SELECT 'hotmail.com' AS domain
+    UNION ALL SELECT 'aol.com' AS domain
+    UNION ALL SELECT 'icloud.com' AS domain
+    UNION ALL SELECT 'protonmail.com' AS domain
+    UNION ALL SELECT 'mail.com' AS domain
+    UNION ALL SELECT 'zoho.com' AS domain
+  ),
+  -- Generate email addresses from names and domains
+  emails AS (
+    SELECT
+      first_name,
+      last_name,
+      CONCAT(LOWER(first_name), '.', LOWER(last_name), '@', domain) AS email
+    FROM names CROSS JOIN domains
+  ),
+  -- Generate phone numbers
+  phones AS (
+    SELECT
+      CONCAT('(', CAST(100 + FLOOR(RAND() * 899) AS STRING), ') ',
+             CAST(100 + FLOOR(RAND() * 899) AS STRING), '-',
+             CAST(1000 + FLOOR(RAND() * 8999) AS STRING)) AS phone_number
+    FROM UNNEST(GENERATE_ARRAY(1, 100))
+  ),
+  -- Generate addresses
+  addresses AS (
+    SELECT
+      CAST(FLOOR(1 + RAND() * 9999) AS STRING) AS street_number,
+      street_name,
+      city,
+      state,
+      CAST(10000 + FLOOR(RAND() * 89999) AS STRING) AS zip_code
+    FROM UNNEST([
+      STRUCT('Main St' AS street_name, 'New York' AS city, 'NY' AS state),
+      STRUCT('Oak Ave' AS street_name, 'Los Angeles' AS city, 'CA' AS state),
+      STRUCT('Maple Rd' AS street_name, 'Chicago' AS city, 'IL' AS state),
+      STRUCT('Cedar Ln' AS street_name, 'Houston' AS city, 'TX' AS state),
+      STRUCT('Pine St' AS street_name, 'Phoenix' AS city, 'AZ' AS state),
+      STRUCT('Elm St' AS street_name, 'Philadelphia' AS city, 'PA' AS state),
+      STRUCT('Washington Ave' AS street_name, 'San Antonio' AS city, 'TX' AS state),
+      STRUCT('Park Blvd' AS street_name, 'San Diego' AS city, 'CA' AS state),
+      STRUCT('Lake St' AS street_name, 'Dallas' AS city, 'TX' AS state),
+      STRUCT('River Rd' AS street_name, 'San Jose' AS city, 'CA' AS state)
+    ])
+  ),
+  -- Generate additional random fields for performance testing
+  extra_fields AS (
+    SELECT
+      CAST(ROW_NUMBER() OVER() AS STRING) AS id,
+      ARRAY(
+        SELECT CONCAT('field_', CAST(n AS STRING), '_', CAST(FLOOR(RAND() * 1000) AS STRING))
+        FROM UNNEST(GENERATE_ARRAY(1, (SELECT additional_fields_count FROM test_parameters))) AS n
+      ) AS extra_fields
+    FROM UNNEST(GENERATE_ARRAY(1, 1000))
+  ),
+  -- Combine all data into synthetic records
+  base_data AS (
+    SELECT
+      ROW_NUMBER() OVER() AS row_num,
+      first_name,
+      last_name,
+      email,
+      phone_number,
+      CONCAT(street_number, ' ', street_name) AS street_address,
+      city,
+      state,
+      zip_code,
+      extra_fields
+    FROM emails
+    JOIN phones ON TRUE
+    JOIN addresses ON TRUE
+    JOIN extra_fields ON TRUE
+    LIMIT (SELECT source_record_count FROM test_parameters)
+  )
+SELECT
+  CONCAT('S', CAST(row_num AS STRING)) AS source_id,
+  first_name,
+  last_name,
+  email,
+  phone_number,
+  street_address,
+  city,
+  state,
+  zip_code,
+  CONCAT('CUST-', LPAD(CAST(FLOOR(RAND() * 1000000) AS STRING), 6, '0')) AS customer_id,
+  -- Unpack the extra fields array into individual columns
+  extra_fields
+FROM base_data;
+
+-- Create partitioned and clustered target table with variations of source data
+CREATE OR REPLACE TEMPORARY TABLE comprehensive_target AS
+WITH
+  -- Apply modifications to source data to simulate real-world variations
+  base_variations AS (
+    SELECT
+      source_id,
+      -- Vary first name (some nicknames, some typos)
+      CASE
+        WHEN RAND() < 0.05 THEN 
+          CASE 
+            WHEN first_name = 'John' THEN 'Johnny'
+            WHEN first_name = 'Jennifer' THEN 'Jenny'
+            WHEN first_name = 'Robert' THEN 'Bob'
+            WHEN first_name = 'James' THEN 'Jim'
+            WHEN first_name = 'William' THEN 'Bill'
+            ELSE first_name
+          END
+        WHEN RAND() < 0.08 THEN CONCAT(SUBSTR(first_name, 1, LENGTH(first_name) - 1), 
+                                      CASE WHEN SUBSTR(first_name, LENGTH(first_name)) = 'n' THEN 'm'
+                                           WHEN SUBSTR(first_name, LENGTH(first_name)) = 'a' THEN 'e'
+                                           ELSE 'a' END)
+        ELSE first_name
+      END AS first_name,
+      
+      -- Vary last name (mostly intact with few typos)
+      CASE
+        WHEN RAND() < 0.03 THEN REPLACE(last_name, 'i', 'y')
+        WHEN RAND() < 0.03 THEN REPLACE(last_name, 'e', 'i')
+        ELSE last_name
+      END AS last_name,
+      
+      -- Vary email
+      CASE
+        WHEN RAND() < 0.1 THEN REPLACE(email, '.', '_')
+        WHEN RAND() < 0.05 THEN REPLACE(email, '@', '_at_')
+        ELSE email
+      END AS email_address,
+      
+      -- Vary phone with different formats
+      CASE
+        WHEN RAND() < 0.2 THEN REPLACE(REPLACE(phone_number, '(', ''), ')', '-')
+        WHEN RAND() < 0.1 THEN REPLACE(REPLACE(REPLACE(phone_number, '(', ''), ')', ''), ' ', '')
+        ELSE phone_number
+      END AS phone,
+      
+      -- Vary address
+      CASE
+        WHEN RAND() < 0.15 THEN REPLACE(street_address, 'St', 'Street')
+        WHEN RAND() < 0.15 THEN REPLACE(street_address, 'Rd', 'Road')
+        WHEN RAND() < 0.15 THEN REPLACE(street_address, 'Ave', 'Avenue')
+        ELSE street_address
+      END AS address,
+      
+      city,
+      state,
+      
+      -- Vary zip
+      CASE
+        WHEN RAND() < 0.05 THEN CONCAT(zip_code, '-', CAST(1000 + FLOOR(RAND() * 8999) AS STRING))
+        ELSE zip_code
+      END AS postal_code,
+      
+      customer_id,
+      extra_fields,
+      
+      -- Add some target-specific fields
+      CURRENT_DATE() AS last_updated,
+      CASE WHEN RAND() < 0.7 THEN TRUE ELSE FALSE END AS is_active,
+      ARRAY['tag1', 'tag2', 'tag3'][OFFSET(FLOOR(RAND() * 3))] AS segment,
+      ROUND(RAND() * 10000, 2) AS lifetime_value
+    FROM comprehensive_source
+  ),
+  -- Add additional synthetic records
+  additional_records AS (
+    SELECT
+      CONCAT('T', CAST(ROW_NUMBER() OVER() + (SELECT source_record_count FROM test_parameters) AS STRING)) AS source_id,
+      first_name,
+      last_name,
+      email AS email_address,
+      phone_number AS phone,
+      street_address AS address,
+      city,
+      state,
+      zip_code AS postal_code,
+      CONCAT('CUST-', LPAD(CAST(FLOOR(RAND() * 1000000) AS STRING), 6, '0')) AS customer_id,
+      extra_fields,
+      CURRENT_DATE() AS last_updated,
+      CASE WHEN RAND() < 0.7 THEN TRUE ELSE FALSE END AS is_active,
+      ARRAY['tag1', 'tag2', 'tag3'][OFFSET(FLOOR(RAND() * 3))] AS segment,
+      ROUND(RAND() * 10000, 2) AS lifetime_value
+    FROM comprehensive_source
+    CROSS JOIN (SELECT source_record_count, target_record_count FROM test_parameters) params
+    WHERE ROW_NUMBER() OVER() <= params.target_record_count - params.source_record_count
+  )
+SELECT * FROM base_variations
+UNION ALL
+SELECT * FROM additional_records;
+
+-- Create indexes (clustering/partitioning) on target table if enabled
+${
+  let sql = '';
+  const params = `SELECT * FROM test_parameters`;
+  
+  sql += `
+-- Creating optimized tables with clustering and partitioning for performance testing
+CREATE OR REPLACE TABLE temp_comprehensive_target_optimized
+`;
+  
+  sql += `
+CLUSTER BY customer_id
+AS SELECT * FROM comprehensive_target
+`;
+  
+  return sql;
+}
+
+-- Checkpoint 1: Capture resources after data generation
+CREATE OR REPLACE TEMPORARY TABLE comp_perf_checkpoint_1 AS
+SELECT 
+  'After data generation' AS checkpoint,
+  CURRENT_TIMESTAMP() AS timestamp,
+  ${resourceMonitor.captureCurrentUsage('data_generation')},
+  ${performanceTracker.checkpoint('data_generation')};
+
+-- Run standard waterfall matching process
+${
+  matcher.waterfall({
+    sourceTable: 'comprehensive_source',
+    targetTable: 'comprehensive_target_optimized',
+    fieldMappings: {
+      firstName: {source: "first_name", target: "first_name"},
+      lastName: {source: "last_name", target: "last_name"},
+      email: {source: "email", target: "email_address"},
+      phoneNumber: {source: "phone_number", target: "phone"},
+      streetAddress: {source: "street_address", target: "address"},
+      city: {source: "city", target: "city"},
+      state: {source: "state", target: "state"},
+      zipCode: {source: "zip_code", target: "postal_code"}
+    },
+    appendFields: ["customer_id", "segment", "lifetime_value"],
+    matchThreshold: 0.75,
+    outputTable: 'comp_waterfall_results'
+  })
+}
+
+-- Checkpoint 2: After waterfall matching
+CREATE OR REPLACE TEMPORARY TABLE comp_perf_checkpoint_2 AS
+SELECT 
+  'After waterfall matching' AS checkpoint,
+  CURRENT_TIMESTAMP() AS timestamp,
+  ${resourceMonitor.captureCurrentUsage('waterfall_matching')},
+  ${performanceTracker.checkpoint('waterfall_matching')};
+
+-- Run transitive closure to identify indirect matches
+${
+  const transitiveMatcher = new TransitiveMatcher({
+    directMatchesTable: 'comp_waterfall_results',
+    sourceIdField: 'source_id',
+    targetIdField: 'reference_id',
+    confidenceField: 'confidence',
+    outputTable: 'comp_transitive_results',
+    maxDepth: 3,
+    minConfidence: 0.7
+  });
+  
+  transitiveMatcher.execute();
+}
+
+-- Checkpoint 3: After transitive matching
+CREATE OR REPLACE TEMPORARY TABLE comp_perf_checkpoint_3 AS
+SELECT 
+  'After transitive matching' AS checkpoint,
+  CURRENT_TIMESTAMP() AS timestamp,
+  ${resourceMonitor.captureCurrentUsage('transitive_matching')},
+  ${performanceTracker.checkpoint('transitive_matching')};
+
+-- Add incremental changes to source table
+CREATE OR REPLACE TEMPORARY TABLE comprehensive_source_incremental AS
+SELECT * FROM comprehensive_source
+UNION ALL
+SELECT
+  CONCAT('S', CAST(source_record_count + ROW_NUMBER() OVER() AS STRING)) AS source_id,
+  first_name,
+  last_name,
+  email,
+  phone_number,
+  street_address,
+  city,
+  state,
+  zip_code,
+  CONCAT('CUST-', LPAD(CAST(FLOOR(RAND() * 1000000) AS STRING), 6, '0')) AS customer_id,
+  extra_fields
+FROM comprehensive_source
+CROSS JOIN (SELECT source_record_count FROM test_parameters) params
+LIMIT CAST(params.source_record_count * 0.2 AS INT64);
+
+-- Run incremental matching
+${
+  matcher.waterfall({
+    sourceTable: 'comprehensive_source_incremental',
+    targetTable: 'comprehensive_target_optimized',
+    fieldMappings: {
+      firstName: {source: "first_name", target: "first_name"},
+      lastName: {source: "last_name", target: "last_name"},
+      email: {source: "email", target: "email_address"},
+      phoneNumber: {source: "phone_number", target: "phone"},
+      streetAddress: {source: "street_address", target: "address"},
+      city: {source: "city", target: "city"},
+      state: {source: "state", target: "state"},
+      zipCode: {source: "zip_code", target: "postal_code"}
+    },
+    appendFields: ["customer_id", "segment", "lifetime_value"],
+    matchThreshold: 0.75,
+    outputTable: 'comp_incremental_results',
+    incrementalColumn: 'source_id',
+    previousResultsTable: 'comp_waterfall_results'
+  })
+}
+
+-- Checkpoint 4: After incremental matching
+CREATE OR REPLACE TEMPORARY TABLE comp_perf_checkpoint_4 AS
+SELECT 
+  'After incremental matching' AS checkpoint,
+  CURRENT_TIMESTAMP() AS timestamp,
+  ${resourceMonitor.captureCurrentUsage('incremental_matching')},
+  ${performanceTracker.checkpoint('incremental_matching')};
+
+-- Stop performance tracking and capture final metrics
+${
+  performanceTracker.stop();
+  resourceMonitor.stop();
+}
+
+-- Collect match statistics
+CREATE OR REPLACE TEMPORARY TABLE comp_match_statistics AS
+SELECT
+  (SELECT COUNT(*) FROM comprehensive_source) AS source_count,
+  (SELECT COUNT(*) FROM comprehensive_target) AS target_count,
+  (SELECT COUNT(*) FROM comp_waterfall_results WHERE reference_id IS NOT NULL) AS waterfall_matched_count,
+  (SELECT COUNT(*) FROM comp_transitive_results) AS transitive_matched_count,
+  (SELECT COUNT(*) FROM comp_incremental_results WHERE reference_id IS NOT NULL) - 
+    (SELECT COUNT(*) FROM comp_waterfall_results WHERE source_id IN (SELECT source_id FROM comp_incremental_results) AND reference_id IS NOT NULL) AS new_incremental_matches
+;
+
+-- Collect performance metrics across the entire test
+CREATE OR REPLACE TEMPORARY TABLE comp_perf_metrics AS
+SELECT
+  ${performanceTracker.getTotalDuration()} AS total_duration_ms,
+  ${performanceTracker.getStageDuration('data_generation')} AS data_gen_duration_ms,
+  ${performanceTracker.getStageDuration('waterfall_matching')} AS waterfall_duration_ms,
+  ${performanceTracker.getStageDuration('transitive_matching')} AS transitive_duration_ms,
+  ${performanceTracker.getStageDuration('incremental_matching')} AS incremental_duration_ms,
+  ${resourceMonitor.getMaxMemoryUsage()} AS peak_memory_mb,
+  ${resourceMonitor.getAverageCpuUsage()} AS avg_cpu_percent,
+  ${resourceMonitor.getMaxCpuUsage()} AS peak_cpu_percent
+;
+
+-- Collect resource usage metrics for each phase
+CREATE OR REPLACE TEMPORARY TABLE comp_resource_metrics AS
+SELECT
+  checkpoint,
+  timestamp,
+  memory_usage_mb,
+  cpu_percent,
+  duration_ms
+FROM (
+  SELECT * FROM comp_perf_checkpoint_1
+  UNION ALL
+  SELECT * FROM comp_perf_checkpoint_2
+  UNION ALL
+  SELECT * FROM comp_perf_checkpoint_3
+  UNION ALL
+  SELECT * FROM comp_perf_checkpoint_4
+) checkpoints
+ORDER BY timestamp;
+
+-- Generate final comprehensive report
+SELECT
+  'Comprehensive Performance Test Report' AS report_name,
+  CURRENT_TIMESTAMP() AS report_time,
+  FORMAT('Test performed with %d source records and %d target records',
+         (SELECT source_count FROM comp_match_statistics),
+         (SELECT target_count FROM comp_match_statistics)) AS test_size,
+  FORMAT('Total duration: %.2f seconds', 
+         (SELECT total_duration_ms FROM comp_perf_metrics) / 1000) AS total_duration,
+  FORMAT('Peak memory: %.2f MB, Avg CPU: %.2f%%, Peak CPU: %.2f%%',
+         (SELECT peak_memory_mb FROM comp_perf_metrics),
+         (SELECT avg_cpu_percent FROM comp_perf_metrics),
+         (SELECT peak_cpu_percent FROM comp_perf_metrics)) AS resource_usage,
+  FORMAT('Waterfall matches: %d (%.2f%% of source), Transitive matches: %d, New incremental matches: %d',
+         (SELECT waterfall_matched_count FROM comp_match_statistics),
+         (SELECT waterfall_matched_count * 100.0 / source_count FROM comp_match_statistics),
+         (SELECT transitive_matched_count FROM comp_match_statistics),
+         (SELECT new_incremental_matches FROM comp_match_statistics)) AS match_statistics,
+  FORMAT('Component timings - Data gen: %.2fs, Waterfall: %.2fs, Transitive: %.2fs, Incremental: %.2fs',
+         (SELECT data_gen_duration_ms FROM comp_perf_metrics) / 1000,
+         (SELECT waterfall_duration_ms FROM comp_perf_metrics) / 1000,
+         (SELECT transitive_duration_ms FROM comp_perf_metrics) / 1000,
+         (SELECT incremental_duration_ms FROM comp_perf_metrics) / 1000) AS component_timings;
+
+-- Output detailed performance metrics table for visualization
+SELECT * FROM comp_resource_metrics ORDER BY timestamp; 
