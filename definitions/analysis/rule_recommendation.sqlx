@@ -1,0 +1,76 @@
+// definitions/analysis/rule_recommendation.sqlx
+config {
+  type: "table",
+  description: "Generates rule recommendations based on schema analysis",
+  dependencies: ["schema_analysis"]
+}
+
+// Import rule framework
+const { intelligentRuleSelector } = require("../../includes/rules/intelligent_rule_selector");
+
+// Define matching goals - these could also be parameterized
+const matchingGoals = [
+  {
+    name: "high_precision",
+    description: "Find only high-confidence matches",
+    config: { precision: 0.9, recall: 0.5 }
+  },
+  {
+    name: "high_recall",
+    description: "Find as many potential matches as possible",
+    config: { precision: 0.5, recall: 0.9 }
+  },
+  {
+    name: "balanced",
+    description: "Balance precision and recall",
+    config: { precision: 0.7, recall: 0.7 }
+  }
+];
+
+// Define source tables to analyze.  These would normally be references to actual tables.
+const sourceTableA = "your_project.your_dataset.source_customers_a"; // Replace with your table
+const sourceTableB = "your_project.your_dataset.source_customers_b"; // Replace with your table
+
+// Function to format rule recommendation as SQL
+function formatRecommendationAsSql(recommendation) {
+    let rows = [];
+    recommendation.recommendedRules.forEach(rule => {
+        rows.push(`(
+          '${recommendation.goal.inferredType}',
+          '${recommendation.goal.description}',
+          '${rule.type}',
+          '${rule.name}',
+          '${JSON.stringify(rule.fields)}',
+          ${rule.threshold},
+          '${rule.algorithm}',
+          '${JSON.stringify(rule.options)}',
+          ${rule.historicalF1Score ? rule.historicalF1Score : 'NULL'},
+          ${rule.historicalPrecision ? rule.historicalPrecision : 'NULL'},
+          ${rule.historicalRecall ? rule.historicalRecall : 'NULL'}
+        )`);
+    });
+
+    return `
+      SELECT
+        goal_name,
+        goal_description,
+        rule_type,
+        rule_name,
+        fields,
+        threshold,
+        algorithm,
+        options,
+        historical_f1,
+        historical_precision,
+        historical_recall
+      FROM UNNEST([
+        ${rows.join(',\n        ')}
+      ]) AS t (goal_name, goal_description, rule_type, rule_name, fields, threshold, algorithm, options, historical_f1, historical_precision, historical_recall)
+    `;
+}
+
+// Generate rule recommendations for each goal and format as SQL.
+js`${Promise.all(matchingGoals.map(goal => 
+  intelligentRuleSelector.recommendRules(sourceTableA, sourceTableB, goal.description, goal.config)
+    .then(recommendation => formatRecommendationAsSql(recommendation))
+)).then(results => results.join("\\nUNION ALL\\n"))}`

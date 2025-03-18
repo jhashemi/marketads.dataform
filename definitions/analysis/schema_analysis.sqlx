@@ -1,0 +1,16 @@
+// definitions/analysis/schema_analysis.sqlx
+config {
+  type: "table",
+  description: "Analyzes source schemas and stores analysis results"
+}
+
+// Import needed modules
+const { schemaAnalyzer } = require("../../includes/rules/schema_analyzer");
+
+// Define source tables to analyze.  These would normally be references to actual tables.
+const sourceTableA = "your_project.your_dataset.source_customers_a";
+const sourceTableB = "your_project.your_dataset.source_customers_b";
+
+// Generate analysis query.
+js`SELECT *
+FROM UNNEST(${schemaAnalyzer.generateAnalysisSql([sourceTableA, sourceTableB])})`

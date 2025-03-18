@@ -478,6 +478,21 @@ class MatchEngine {
     
     return strategies;
   }
+  /**
+   * Generates a SQL query for matching based on provided configuration.
+   * This is a placeholder for a more sophisticated SQL generation logic.
+   * @param {object} config - Matching configuration.
+   * @param {string} config.sourceTableA - Source table A.
+   * @param {string} config.sourceTableB - Source table B.
+   * @param {object} config.rulesConfig -  Configuration for matching rules.
+   * @returns {string} - The generated SQL query.
+   */
+  generateMatchingSql(config) {
+    // TODO: Implement proper SQL generation based on the rulesConfig
+    // This is a placeholder implementation
+    return `SELECT * FROM \`${config.sourceTableA}\` a JOIN \`${config.sourceTableB}\` b ON a.email = b.email`;
+  }
+
 }
 
 // Ensure MatchEngine implements IMatchEngine
@@ -494,3 +509,4 @@ module.exports = {
   calculateTokenOverlapSimilarity,
   calculateJaccardSimilarity
 };
+  generateMatchingSql

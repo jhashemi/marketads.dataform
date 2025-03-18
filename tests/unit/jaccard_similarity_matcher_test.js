@@ -341,7 +341,8 @@ if (require.main === module) {
 }
 
 module.exports = { tests };
-    
+  
+describe('handles empty inputs', () => {    
     test('handles empty inputs', () => {
       expect(calculateJaccardSimilarity([], [])).toBe(0);
       expect(calculateJaccardSimilarity('', '', { tokenize: true })).toBe(0);
@@ -413,7 +414,6 @@ module.exports = { tests };
       expect(result.isMatch).toBe(true);
     });
   });
-});
 
 // For manual testing
 if (require.main === module) {

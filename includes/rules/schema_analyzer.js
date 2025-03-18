@@ -92,11 +92,23 @@ const dbConnector = {
 };
 
 /**
- * Analyze the schema of source and reference tables to identify common fields and statistics
- * @param {string} sourceTableId - The ID of the source table
- * @param {string} referenceTableId - The ID of the reference table
- * @returns {Promise<Object>} - Analysis results including common fields and statistics
+ * Generates a SQL query to analyze the schema of the specified tables.
+ * @param {string[]} tableIds - The IDs of the tables to analyze, including project and dataset.
+ * @returns {string} - The SQL query for schema analysis.
  */
+function generateAnalysisSql(tableIds) {
+  // This is a simplified example. In a real implementation, you would
+  // dynamically generate SQL based on the database type (BigQuery in this case).
+  // You would also likely use INFORMATION_SCHEMA views.
+
+  const queries = tableIds.map(tableId => {
+    return `SELECT\n      '${tableId}' as table_name,\n      column_name as field_name,\n      data_type as field_type\n    FROM \`${tableId}.INFORMATION_SCHEMA.COLUMNS\``;
+  });
+
+  return queries.join('\nUNION ALL\n');
+}
+
+
 async function analyzeSchema(sourceTableId, referenceTableId) {
   console.log(`Analyzing schema for ${sourceTableId} → ${referenceTableId}`);
   
@@ -633,5 +645,6 @@ module.exports = {
   identifyMatchingFields,
   getSampleData,
   analyzeValueDistribution,
-  analyzeStringFormat
-}; 
+  analyzeStringFormat,
+  generateAnalysisSql
+};

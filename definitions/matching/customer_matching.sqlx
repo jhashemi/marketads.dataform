@@ -1,85 +1,37 @@
+// definitions/matching/customer_matching.sqlx
 config {
   type: "table",
-  name: "customer_matches",
-  description: "Matched customer records with confidence scores",
-  columns: {
-    source_id: "Source record unique identifier",
-    target_id: "Target record unique identifier",
-    match_confidence: "Confidence score for the match (0-1)",
-    match_tier: "Match quality tier (HIGH, MEDIUM, LOW)",
-    first_name_score: "First name match score component",
-    last_name_score: "Last name match score component",
-    email_score: "Email match score component",
-    address_score: "Address match score component",
-    matched_date: "Date when the match was performed"
-  },
-  tags: ["matching", "customer_data"],
-  assertions: {
-    nonNull: ["source_id", "target_id", "match_confidence"],
-    rowConditions: [
-      "match_confidence >= 0 AND match_confidence <= 1",
-      "match_tier IN ('HIGH', 'MEDIUM', 'LOW')"
-    ]
-  }
+  description: "Performs customer matching using recommended rules",
+  dependencies: ["rule_recommendation", "source_customers_a", "source_customers_b"]
 }
 
--- Simple example of a matching query
--- In a real scenario, this would use JS functions from includes
-WITH source_data AS (
-  SELECT * FROM ${ref("sources.customer_data")}
+// Import matching engine
+const { matchEngine } = require("../../includes/matching/engine");
+
+// Select a goal to use for matching - this could be parameterized, or you could join
+// with the rule_recommendation table to get rules for multiple goals.
+const matchingGoal = "balanced";
+
+js`
+WITH recommended_rules AS (
+  SELECT *
+  FROM ${ref("rule_recommendation")}
+  WHERE goal_name = '${matchingGoal}'
+  LIMIT 1
 ),
-target_data AS (
-  SELECT * FROM ${ref("sources.customer_master")}
+unnested_rules AS (
+    SELECT 
+        rules.rule_type as rule_type,
+        rules.rule_name as rule_name,
+        CAST(rules.threshold as BIGNUMERIC) as threshold,
+        rules.algorithm as algorithm,
+        rules.options as options
+    FROM recommended_rules
+    CROSS JOIN UNNEST(JSON_EXTRACT_ARRAY(recommended_rules.rules, '$')) as rules
 )
 
-SELECT 
-  s.customer_id AS source_id,
-  t.id AS target_id,
-  -- Calculate match confidence from multiple components
-  (
-    CASE WHEN s.email_address = t.email THEN 0.6 ELSE 0 END +
-    CASE WHEN SOUNDEX(s.first_name) = SOUNDEX(t.first_name) THEN 0.2 ELSE 0 END +
-    CASE WHEN SOUNDEX(s.last_name) = SOUNDEX(t.last_name) THEN 0.2 ELSE 0 END
-  ) AS match_confidence,
-  
-  -- Determine match tier based on confidence
-  CASE
-    WHEN (
-      CASE WHEN s.email_address = t.email THEN 0.6 ELSE 0 END +
-      CASE WHEN SOUNDEX(s.first_name) = SOUNDEX(t.first_name) THEN 0.2 ELSE 0 END +
-      CASE WHEN SOUNDEX(s.last_name) = SOUNDEX(t.last_name) THEN 0.2 ELSE 0 END
-    ) >= 0.9 THEN 'HIGH'
-    WHEN (
-      CASE WHEN s.email_address = t.email THEN 0.6 ELSE 0 END +
-      CASE WHEN SOUNDEX(s.first_name) = SOUNDEX(t.first_name) THEN 0.2 ELSE 0 END +
-      CASE WHEN SOUNDEX(s.last_name) = SOUNDEX(t.last_name) THEN 0.2 ELSE 0 END
-    ) >= 0.75 THEN 'MEDIUM'
-    ELSE 'LOW'
-  END AS match_tier,
-  
-  -- Individual score components
-  CASE WHEN SOUNDEX(s.first_name) = SOUNDEX(t.first_name) THEN 1.0 
-       ELSE REGEXP_REPLACE(CAST(LEVENSHTEIN(s.first_name, t.first_name) / GREATEST(LENGTH(s.first_name), LENGTH(t.first_name)) AS STRING), r"0\.", ".") END AS first_name_score,
-  CASE WHEN SOUNDEX(s.last_name) = SOUNDEX(t.last_name) THEN 1.0 
-       ELSE REGEXP_REPLACE(CAST(LEVENSHTEIN(s.last_name, t.last_name) / GREATEST(LENGTH(s.last_name), LENGTH(t.last_name)) AS STRING), r"0\.", ".") END AS last_name_score,
-  CASE WHEN s.email_address = t.email THEN 1.0 ELSE 0.0 END AS email_score,
-  0 AS address_score, -- Placeholder for address matching
-  CURRENT_DATE() AS matched_date
-
-FROM source_data s
-JOIN target_data t
-  -- Join on blocking keys to reduce comparison space
-  ON (
-    -- Simple blocking based on first letter of name + first 3 of last name
-    CONCAT(SUBSTR(s.first_name, 1, 1), SUBSTR(s.last_name, 1, 3)) = 
-    CONCAT(SUBSTR(t.first_name, 1, 1), SUBSTR(t.last_name, 1, 3))
-    -- Add additional blocking conditions with OR
-  )
-WHERE 
-  -- Only keep records above minimum confidence threshold
-  (
-    CASE WHEN s.email_address = t.email THEN 0.6 ELSE 0 END +
-    CASE WHEN SOUNDEX(s.first_name) = SOUNDEX(t.first_name) THEN 0.2 ELSE 0 END +
-    CASE WHEN SOUNDEX(s.last_name) = SOUNDEX(t.last_name) THEN 0.2 ELSE 0 END
-  ) >= 0.5
-ORDER BY match_confidence DESC
+${matchEngine.generateMatchingSql({
+  sourceTableA: "your_project.your_dataset.source_customers_a", // Replace with your actual table
+  sourceTableB: "your_project.your_dataset.source_customers_b", // Replace with your actual table
+  rulesConfig: "unnested_rules" // Reference the CTE
+})}`

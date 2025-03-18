@@ -6,7 +6,61 @@
  * to enable more intelligent matching rule selection.
  */
 
-const { isString, isNumber, isDate, isEmail, isPhoneNumber, isPostalCode } = require('../utils/validation');
+// Key semantic types organized by domain
+const semanticTypeMap = {
+  // Person identifiers
+  email: ["email", "email_address", "emailAddress", "e_mail", "contact_email", "personal_email", "business_email"],
+  firstName: ["firstname", "first_name", "personfirstname", "fname", "given_name", "first"],
+  lastName: ["lastname", "last_name", "personlastname", "lname", "surname", "last", "family_name"],
+  fullName: ["fullname", "full_name", "name", "person_name", "personname", "customer_name"],
+  phoneNumber: ["phone", "phonenumber", "phone_number", "telephone", "tel", "mobile", "cell", "home_phone", "work_phone", "mobile_phone"],
+  dateOfBirth: ["dob", "date_of_birth", "birthdate", "birth_date", "birthdate", "birth_day"],
+  age: ["age", "person_age", "customer_age", "years_old"],
+  gender: ["gender", "sex"],
+  ssn: ["ssn", "social_security", "social_security_number", "tax_id"],
+  
+  // Address fields
+  address: ["address", "street_address", "streetaddress", "addr", "street", "residence_address", "mailing_address"],
+  addressLine1: ["address1", "address_line1", "addressline1", "addr1", "street_address_1"],
+  addressLine2: ["address2", "address_line2", "addressline2", "addr2", "street_address_2", "apt", "unit", "suite"],
+  city: ["city", "town", "municipality", "locality", "residence_city", "mailing_city"],
+  state: ["state", "province", "region", "state_province", "residence_state", "mailing_state", "st"],
+  zipCode: ["zipcode", "zip_code", "zip", "postal_code", "postalcode", "residence_zip", "mailing_zip", "postal"],
+  country: ["country", "nation", "country_code"],
+  
+  // Business fields
+  companyName: ["companyname", "company_name", "company", "organization", "business_name", "employer", "firm"],
+  website: ["website", "web_site", "domain", "url", "web", "homepage"],
+  
+  // Transaction fields
+  orderId: ["orderid", "order_id", "ordernumber", "order_number"],
+  transactionId: ["transactionid", "transaction_id", "txnid", "txn_id"],
+  purchaseAmount: ["amount", "purchaseamount", "purchase_amount", "price", "cost", "revenue"],
+  
+  // Dates and times
+  date: ["date", "day", "event_date"],
+  timestamp: ["timestamp", "time", "datetime", "date_time", "eventtime"],
+  
+  // Marketing fields
+  campaign: ["campaign", "campaignname", "campaign_name", "utm_campaign"],
+  source: ["source", "utm_source", "traffic_source", "trafficsource"],
+  medium: ["medium", "utm_medium", "channel", "marketing_channel"],
+  
+  // IDs and identifiers
+  userId: ["userid", "user_id", "visitorid", "visitor_id", "customerid", "customer_id"],
+  deviceId: ["deviceid", "device_id", "hardwareid", "hardware_id", "did"]
+};
+
+/**
+ * Regex patterns for validating semantic types
+ */
+const validationPatterns = {
+  email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+  phoneNumber: /^\+?[0-9]{10,15}$/,
+  zipCode: /^[0-9]{5}(-[0-9]{4})?$/,
+  dateOfBirth: /^(19|20)\d\d[- /.](0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])$/,
+  ssn: /^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$/
+};
 
 /**
  * Main field type inference function
@@ -145,69 +199,71 @@ function inferTypeFromName(fieldName) {
  * @returns {string|null} Inferred semantic type or null if can't determine
  */
 function inferTypeFromContent(samples, sqlType) {
-  // Only proceed if we have sample data
-  if (!samples || samples.length === 0) {
-    return null;
-  }
-  
-  // Get string samples (since most pattern detection works on strings)
-  const stringSamples = samples
-    .filter(sample => sample !== null && sample !== undefined)
-    .map(sample => String(sample));
-  
-  if (stringSamples.length === 0) {
-    return null;
-  }
-  
-  // Test for email pattern
-  const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  if (stringSamples.filter(s => emailPattern.test(s)).length / stringSamples.length >= 0.8) {
-    return 'email';
-  }
-  
-  // Test for phone pattern (simplified for demo)
-  const phonePattern = /^\+?[0-9]{7,15}$|^\+?[0-9]{3}[-. ][0-9]{3}[-. ][0-9]{4}$/;
-  if (stringSamples.filter(s => phonePattern.test(s)).length / stringSamples.length >= 0.8) {
-    return 'phoneNumber';
-  }
-  
-  // Test for postal/zip code pattern
-  const postalPattern = /^[0-9]{5}(-[0-9]{4})?$|^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$/;
-  if (stringSamples.filter(s => postalPattern.test(s)).length / stringSamples.length >= 0.8) {
-    return 'postalCode';
-  }
-  
-  // Test for date of birth (people are typically under 100 years old)
-  if (sqlType === 'date' || sqlType === 'timestamp') {
-    try {
-      const dates = stringSamples.map(s => new Date(s)).filter(d => !isNaN(d.getTime()));
-      const now = new Date();
-      const yearsSince = dates.map(d => (now - d) / (1000 * 60 * 60 * 24 * 365));
-      if (yearsSince.every(years => years > 0 && years < 100)) {
-        return 'dateOfBirth';
+    // Only proceed if we have sample data
+    if (!samples || samples.length === 0) {
+      return null;
+    }
+
+    // Get string samples (since most pattern detection works on strings)
+    const stringSamples = samples
+      .filter(sample => sample !== null && sample !== undefined)
+      .map(sample => String(sample));
+
+      if(stringSamples.length === 0){
+        return null;
       }
-    } catch (e) {
-      // Ignore date parsing errors
+
+    // Test for email pattern
+    const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (stringSamples.filter(s => emailPattern.test(s)).length / stringSamples.length >= 0.8) {
+      return 'email';
     }
-  }
-  
-  // Test for name patterns
-  if (sqlType.includes('char') || sqlType.includes('string')) {
-    // Check if looks like first name (single word, capitalized)
-    const firstNamePattern = /^[A-Z][a-z]+$/;
-    if (stringSamples.filter(s => firstNamePattern.test(s)).length / stringSamples.length >= 0.8) {
-      return 'firstName';
+
+    // Test for phone pattern (simplified for demo)
+    const phonePattern = /^\+?[0-9]{7,15}$|^\+?[0-9]{3}[-. ][0-9]{3}[-. ][0-9]{4}$/;
+    if (stringSamples.filter(s => phonePattern.test(s)).length / stringSamples.length >= 0.8) {
+      return 'phoneNumber';
     }
-    
-    // Check if looks like full name (multiple words, capitalized)
-    const fullNamePattern = /^[A-Z][a-z]+([ ][A-Z][a-z]+)+$/;
-    if (stringSamples.filter(s => fullNamePattern.test(s)).length / stringSamples.length >= 0.8) {
-      return 'fullName';
+
+    // Test for postal/zip code pattern
+    const postalPattern = /^[0-9]{5}(-[0-9]{4})?$|^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$/;
+    if (stringSamples.filter(s => postalPattern.test(s)).length / stringSamples.length >= 0.8) {
+      return 'postalCode';
     }
-  }
-  
-  // Return null if no pattern detected
-  return null;
+
+    // Test for date of birth (people are typically under 100 years old)
+    if (sqlType === 'date' || sqlType === 'timestamp') {
+        try {
+            const dates = stringSamples.map(s => new Date(s)).filter(d => !isNaN(d.getTime()));
+            const now = new Date();
+            const yearsSince = dates.map(d => (now - d) / (1000*60*60*24*365));
+            if(yearsSince.every(years => years > 0 && years < 100)){
+                return 'dateOfBirth'
+            }
+        }
+        catch(e){
+            //ignore
+        }
+    }
+
+
+    // Test for name patterns
+    if (sqlType.includes('char') || sqlType.includes('string')) {
+      // Check if looks like first name (single word, capitalized)
+      const firstNamePattern = /^[A-Z][a-z]+$/;
+      if (stringSamples.filter(s => firstNamePattern.test(s)).length / stringSamples.length >= 0.8) {
+        return 'firstName';
+      }
+
+      // Check if looks like full name (multiple words, capitalized)
+      const fullNamePattern = /^[A-Z][a-z]+([ ][A-Z][a-z]+)+$/;
+      if (stringSamples.filter(s => fullNamePattern.test(s)).length / stringSamples.length >= 0.8) {
+        return 'fullName';
+      }
+    }
+
+    // Return null if no pattern detected
+    return null;
 }
 
 /**
@@ -217,53 +273,54 @@ function inferTypeFromContent(samples, sqlType) {
  * @returns {boolean} Whether samples match the inferred type
  */
 function validateSamplesMatchType(samples, type) {
-  // For small samples or empty samples, assume valid
-  if (!samples || samples.length < 3) {
-    return true;
-  }
-  
-  // Convert samples to strings for validation
-  const stringSamples = samples
-    .filter(sample => sample !== null && sample !== undefined)
-    .map(sample => String(sample));
-  
-  if (stringSamples.length === 0) {
-    return true;
-  }
-  
-  // Type-specific validation
-  switch (type) {
-    case 'email':
-      return validateTypePattern(stringSamples, /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/);
-    
-    case 'phoneNumber':
-      return validateTypePattern(stringSamples, /^\+?[0-9]{7,15}$|^\+?[0-9]{3}[-. ][0-9]{3}[-. ][0-9]{4}$/);
-    
-    case 'postalCode':
-      return validateTypePattern(stringSamples, /^[0-9]{5}(-[0-9]{4})?$|^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$/);
-    
-    case 'firstName':
-      return validateTypePattern(stringSamples, /^[A-Z][a-z]+$/i);
-    
-    case 'lastName':
-      return validateTypePattern(stringSamples, /^[A-Z][a-z]+$/i);
-    
-    case 'fullName':
-      return validateTypePattern(stringSamples, /^[A-Za-z]+([ ][A-Za-z]+)+$/);
-    
-    case 'dateOfBirth':
-      try {
-        const validDates = stringSamples
-          .map(s => new Date(s))
-          .filter(d => !isNaN(d.getTime()));
-        return validDates.length / stringSamples.length >= 0.8;
-      } catch (e) {
-        return false;
-      }
-    
-    default:
-      return true; // For types without specific validation
-  }
+    // For small samples or empty samples, assume valid
+    if (!samples || samples.length < 3) {
+        return true;
+    }
+
+    // Convert samples to strings for validation
+    const stringSamples = samples
+        .filter(sample => sample !== null && sample !== undefined)
+        .map(sample => String(sample));
+
+    if (stringSamples.length === 0) {
+        return true;
+    }
+
+    // Type-specific validation
+    switch (type) {
+        case 'email':
+            return validateTypePattern(stringSamples, /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/);
+
+        case 'phoneNumber':
+            return validateTypePattern(stringSamples, /^\+?[0-9]{7,15}$|^\+?[0-9]{3}[-. ][0-9]{3}[-. ][0-9]{4}$/);
+
+        case 'postalCode':
+            return validateTypePattern(stringSamples, /^[0-9]{5}(-[0-9]{4})?$|^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$/);
+        
+        case 'firstName':
+            return validateTypePattern(stringSamples, /^[A-Z][a-z]+$/i);
+
+        case 'lastName':
+            return validateTypePattern(stringSamples, /^[A-Z][a-z]+$/i);
+            
+        case 'fullName':
+            return validateTypePattern(stringSamples, /^[A-Za-z]+([ ][A-Za-z]+)+$/);
+        
+        case 'dateOfBirth':
+            try {
+                const validDates = stringSamples
+                    .map(s => new Date(s))
+                    .filter(d => !isNaN(d.getTime()));                
+                return validDates.length / stringSamples.length >= 0.8;
+            }
+            catch(e){
+                return false;
+            }
+
+        default:
+            return true; // For types without specific validation
+    }
 }
 
 /**
@@ -273,10 +330,11 @@ function validateSamplesMatchType(samples, type) {
  * @param {number} threshold - Minimum ratio of matches required
  * @returns {boolean} Whether samples match the pattern at the threshold
  */
-function validateTypePattern(samples, pattern, threshold = 0.8) {
-  const matchCount = samples.filter(sample => pattern.test(sample)).length;
-  return matchCount / samples.length >= threshold;
+function validateTypePattern(samples, pattern, threshold = 0.8){
+    const matchCount = samples.filter(sample => pattern.test(sample)).length;
+    return matchCount / samples.length >= threshold;
 }
+
 
 /**
  * Map SQL type to generic semantic type
@@ -284,27 +342,27 @@ function validateTypePattern(samples, pattern, threshold = 0.8) {
  * @returns {string} General semantic type
  */
 function mapSqlTypeToSemanticType(sqlType) {
-  if (!sqlType) return 'unknown';
-  
-  const type = sqlType.toLowerCase();
-  
-  if (type.includes('int') || type.includes('decimal') || type.includes('number') || type.includes('float') || type.includes('double')) {
-    return 'number';
-  }
-  
-  if (type.includes('char') || type.includes('text') || type.includes('string')) {
-    return 'string';
-  }
-  
-  if (type.includes('date') || type.includes('time')) {
-    return 'date';
-  }
-  
-  if (type.includes('bool')) {
-    return 'boolean';
-  }
-  
-  return 'unknown';
+    if (!sqlType) return 'unknown';
+    
+    const type = sqlType.toLowerCase();
+    
+    if (type.includes('int') || type.includes('decimal') || type.includes('number') || type.includes('float') || type.includes('double')) {
+      return 'number';
+    }
+    
+    if (type.includes('char') || type.includes('text') || type.includes('string')) {
+      return 'string';
+    }
+    
+    if (type.includes('date') || type.includes('time')) {
+      return 'date';
+    }
+    
+    if (type.includes('bool')) {
+      return 'boolean';
+    }
+    
+    return 'unknown';
 }
 
 /**
@@ -312,28 +370,28 @@ function mapSqlTypeToSemanticType(sqlType) {
  * @returns {Object} Map of semantic types to their compatible types
  */
 function getCompatibleTypes() {
-  return {
-    firstName: ['firstName', 'name', 'fullName'],
-    lastName: ['lastName', 'name', 'fullName'],
-    middleName: ['middleName', 'name', 'fullName'],
-    fullName: ['fullName', 'name'],
-    email: ['email'],
-    phoneNumber: ['phoneNumber'],
-    streetAddress: ['streetAddress', 'address'],
-    city: ['city'],
-    state: ['state'],
-    postalCode: ['postalCode', 'zipCode'],
-    country: ['country'],
-    id: ['id', 'customerId', 'userId'],
-    customerId: ['customerId', 'id'],
-    userId: ['userId', 'id'],
-    date: ['date'],
-    dateOfBirth: ['dateOfBirth'],
-    createdDate: ['createdDate', 'date'],
-    modifiedDate: ['modifiedDate', 'date'],
-    amount: ['amount', 'number'],
-    status: ['status']
-  };
+    return {
+        firstName: ['firstName', 'name', 'fullName'],
+        lastName: ['lastName', 'name', 'fullName'],
+        middleName: ['middleName', 'name', 'fullName'],
+        fullName: ['fullName', 'name'],
+        email: ['email'],
+        phoneNumber: ['phoneNumber'],
+        streetAddress: ['streetAddress', 'address'],
+        city: ['city'],
+        state: ['state'],
+        postalCode: ['postalCode', 'zipCode'],
+        country: ['country'],
+        id: ['id', 'customerId', 'userId'],
+        customerId: ['customerId', 'id'],
+        userId: ['userId', 'id'],
+        date: ['date'],
+        dateOfBirth: ['dateOfBirth'],
+        createdDate: ['createdDate', 'date'],
+        modifiedDate: ['modifiedDate', 'date'],
+        amount: ['amount', 'number'],
+        status: ['status']
+    };
 }
 
 /**
@@ -341,28 +399,62 @@ function getCompatibleTypes() {
  * @returns {Object} Map of semantic types to recommended algorithms
  */
 function getRecommendedAlgorithms() {
-  return {
-    firstName: ['levenshtein', 'jaro', 'soundex'],
-    lastName: ['levenshtein', 'jaro', 'soundex'],
-    middleName: ['levenshtein', 'jaro', 'soundex'],
-    fullName: ['levenshtein', 'jaro', 'soundex'],
-    email: ['exact', 'levenshtein'],
-    phoneNumber: ['exact', 'lastN'],
-    streetAddress: ['token_sort', 'levenshtein'],
-    city: ['levenshtein', 'soundex'],
-    state: ['exact'],
-    postalCode: ['exact', 'startsWith'],
-    country: ['exact'],
-    id: ['exact'],
-    customerId: ['exact'],
-    userId: ['exact'],
-    date: ['exact', 'dateWithinRange'],
-    dateOfBirth: ['exact', 'dateWithinRange'],
-    createdDate: ['dateWithinRange'],
-    modifiedDate: ['dateWithinRange'],
-    amount: ['numeric', 'range'],
-    status: ['exact']
-  };
+    return {
+        firstName: ['levenshtein', 'jaro', 'soundex'],
+        lastName: ['levenshtein', 'jaro', 'soundex'],
+        middleName: ['levenshtein', 'jaro', 'soundex'],
+        fullName: ['levenshtein', 'jaro', 'soundex'],
+        email: ['exact', 'levenshtein'],
+        phoneNumber: ['exact', 'lastN'],
+        streetAddress: ['token_sort', 'levenshtein'],
+        city: ['levenshtein', 'soundex'],
+        state: ['exact'],
+        postalCode: ['exact', 'startsWith'],
+        country: ['exact'],
+        id: ['exact'],
+        customerId: ['exact'],
+        userId: ['exact'],
+        date: ['exact', 'dateWithinRange'],
+        dateOfBirth: ['exact', 'dateWithinRange'],
+        createdDate: ['dateWithinRange'],
+        modifiedDate: ['dateWithinRange'],
+        amount: ['numeric', 'range'],
+        status: ['exact']
+    };
+}
+
+/**
+ * Generates a SQL query to infer field types for a given table.
+ * This is a simplified example and may need adjustments for production use.
+ * @param {string} tableId - The fully qualified table ID (project.dataset.table).
+ * @returns {string} - The SQL query for field type inference.
+ */
+function generateInferenceSql(tableId) {
+
+  return `
+    WITH source_data AS (
+      SELECT * FROM \`${tableId}\`
+    ),
+    field_types AS (
+      SELECT
+        '${tableId}' as table_name,
+        column_name as field_name,
+        data_type as declared_type,
+        CASE
+          WHEN REGEXP_CONTAINS(CAST(${tableId}.email as STRING), r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$') THEN 'email'
+          WHEN REGEXP_CONTAINS(CAST(${tableId}.phone as STRING), r'^\\+?[0-9]{7,15}$|^\\+?[0-9]{3}[-. ][0-9]{3}[-. ][0-9]{4}$') THEN 'phoneNumber'
+          WHEN REGEXP_CONTAINS(CAST(${tableId}.first_name as STRING), r'^[A-Z][a-z]+$') THEN 'firstName'
+          WHEN REGEXP_CONTAINS(CAST(${tableId}.last_name as STRING), r'^[A-Z][a-z]+$') THEN 'lastName'
+          WHEN REGEXP_CONTAINS(CAST(${tableId}.address as STRING), r'^\\\\d+\\\\s[A-Za-z]+\\\\s[A-Za-z]+') THEN 'address'
+          WHEN REGEXP_CONTAINS(CAST(${tableId}.city as STRING), r'^[A-Za-z]+(?:[\\s-][A-Za-z]+)*$') THEN 'city'
+          WHEN REGEXP_CONTAINS(CAST(${tableId}.state as STRING), r'^[A-Z]{2}$') THEN 'state'
+          WHEN REGEXP_CONTAINS(CAST(${tableId}.postal_code as STRING), r'^[0-9]{5}(-[0-9]{4})?$|^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$') THEN 'postalCode'
+          ELSE data_type
+        END as inferred_type
+      FROM \`${tableId}.INFORMATION_SCHEMA.COLUMNS\`
+    )
+    SELECT * FROM field_types;
+  `;
 }
 
 module.exports = {
@@ -373,5 +465,6 @@ module.exports = {
   validateSamplesMatchType,
   mapSqlTypeToSemanticType,
   getCompatibleTypes,
-  getRecommendedAlgorithms
-}; 
+  getRecommendedAlgorithms,
+  generateInferenceSql
+};

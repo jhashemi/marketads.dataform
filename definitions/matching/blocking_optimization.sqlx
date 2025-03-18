@@ -1,0 +1,32 @@
+// definitions/matching/blocking_optimization.sqlx
+config {
+  type: "table",
+  description: "Generates an optimized blocking strategy",
+  dependencies: ["source_customers_a", "source_customers_b"]
+}
+
+// Import necessary modules
+const { schemaAnalyzer } = require("../../includes/rules/schema_analyzer");
+const { ruleOptimizer } = require("../../includes/rules/rule_optimizer");
+
+// Define source tables
+const sourceTableA = "your_project.your_dataset.source_customers_a"; // Replace with your table
+const sourceTableB = "your_project.your_dataset.source_customers_b"; // Replace with your table
+
+// Analyze schemas for blocking optimization
+const schemaInfo = schemaAnalyzer.analyzeSchema(sourceTableA, sourceTableB);
+
+// Generate optimized blocking strategy
+// The goal configuration here is just an example, adjust as needed
+const blockingStrategy = ruleOptimizer.recommendBlockingStrategy(
+  schemaInfo,
+  {
+    performance: "HIGH",
+    recall: 0.95
+  }
+);
+
+// Output the blocking strategy as SQL
+// In a real implementation, you would likely use this to filter your data
+// before applying the more expensive matching logic.
+js`SELECT * FROM UNNEST([${JSON.stringify(blockingStrategy)}])`
