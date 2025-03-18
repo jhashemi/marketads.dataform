@@ -1,0 +1,71 @@
+config {
+  type: "view",
+  name: "standardized_consumer_view",
+  description: "Standardized consumer view with semantically typed fields",
+  tags: ["consumer", "standardized"],
+  schema: "marketads",
+  dependencies: ["trustfinancial.Consumer_2023_q4"]
+}
+
+// Import semantic utilities
+const semanticTypes = require("../../includes/semantic_types");
+const fieldMappingFactory = require("../../includes/field_mapping_factory");
+const config = require("../../includes/config");
+
+// Field mappings for standard consumer fields
+const consumerFields = {
+  // Person information fields
+  email: "EMAIL",
+  phone: "PhoneNumber",
+  first_name: "FirstName",
+  last_name: "LastName",
+  full_name: "CONCAT(FirstName, ' ', LastName)",
+  date_of_birth: "CONCAT(persondateofbirthyear, '-', persondateofbirthmonth, '-', persondateofbirthday)",
+  gender: "persongender",
+  
+  // Location fields
+  address_line_1: "primaryaddress",
+  address_line_2: "secondaryaddress",
+  city: "cityname",
+  state: "state",
+  postal_code: "ZipCode",
+  postal_code_plus4: "Zip_4",
+  
+  // Additional fields
+  household_id: "RDID",
+  person_id: "IndividualId",
+  geo_latitude: "latitude",
+  geo_longitude: "longitude"
+};
+
+// Generate SELECT statement with standardized fields
+let selectStatements = [];
+
+for (const [fieldAlias, fieldExpression] of Object.entries(consumerFields)) {
+  // Detect the semantic type
+  const semanticType = semanticTypes.detectSemanticType(fieldAlias);
+  
+  if (semanticType) {
+    // Get the standardization expression based on semantic type
+    let standardizedExpr = fieldExpression;
+    
+    // Apply semantic type standardization
+    standardizedExpr = semanticTypes.getStandardizationExpression(
+      standardizedExpr, 
+      semanticType.key
+    );
+    
+    selectStatements.push(`${standardizedExpr} AS ${fieldAlias}`);
+  } else {
+    // No semantic type detected, use as-is
+    selectStatements.push(`${fieldExpression} AS ${fieldAlias}`);
+  }
+}
+
+// Create the view
+`
+SELECT
+  ${selectStatements.join(',\n  ')}
+FROM 
+  ${ref("trustfinancial.Consumer_2023_q4")}
+` 

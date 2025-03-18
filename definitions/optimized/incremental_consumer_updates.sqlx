@@ -1,0 +1,71 @@
+config {
+  type: "incremental",
+  name: "incremental_consumer_updates",
+  description: "Incrementally processed standardized consumer data for efficient updates",
+  uniqueKey: ["customer_id"],
+  bigquery: {
+    partitionBy: "process_date",
+    updatePartitionFilter: true
+  },
+  tags: ["optimized", "consumer", "incremental"]
+}
+
+// Import required modules
+const semanticTypes = require("../../includes/semantic_types");
+
+// Pre-operation to ensure we have the required schema
+preOps: [
+  `CREATE TABLE IF NOT EXISTS ${self()}(
+    customer_id STRING,
+    email STRING,
+    phone STRING,
+    name STRING,
+    process_date DATE,
+    update_timestamp TIMESTAMP,
+    is_processed BOOLEAN
+  )`
+]
+
+// Select from source consumer data with a time filter for incremental processing
+WITH new_consumer_records AS (
+  SELECT 
+    customer_id,
+    email_address,
+    phone_number,
+    customer_name,
+    CURRENT_DATE() as process_date,
+    CURRENT_TIMESTAMP() as update_timestamp
+  FROM ${ref("trustfinancial.Consumer_2023_q4")}
+  WHERE true
+
+  -- Only process records that were updated since the last run
+  ${when(incremental(), `AND last_update_ts > (
+      SELECT MAX(update_timestamp)
+      FROM ${self()}
+    )`
+  )}
+),
+
+// Standardize fields for the new/updated records
+standardized_records AS (
+  SELECT
+    customer_id,
+    ${semanticTypes.getStandardizationExpression("email", "email_address")} AS email,
+    ${semanticTypes.getStandardizationExpression("phone", "phone_number")} AS phone,
+    ${semanticTypes.getStandardizationExpression("name", "customer_name")} AS name,
+    process_date,
+    update_timestamp,
+    true as is_processed  -- Mark as processed for tracking
+  FROM new_consumer_records
+)
+
+// Return standardized records
+SELECT 
+  customer_id,
+  email,
+  phone,
+  name,
+  process_date,
+  update_timestamp,
+  is_processed
+FROM standardized_records 

@@ -1,53 +1,44 @@
 // includes/matching_functions.js
 // Core reusable functions for the record linkage system
 
-const { semanticTypeMap } = require('./semantic_types');
+const semanticTypes = require('./semantic_types');
 const { validateParameters } = require('./validation/parameter_validator');
-
+const config = require('./config');
 
 /**
  * Returns a standardized version of the input string for more consistent matching
  * @param {string} input - Raw input string to standardize
- * @param {string} fieldType - Type of field (name, address, phone, email, etc.)
+ * @param {string} fieldName - Field name to detect type or explicit type
  * @returns {string} - Standardized string
-  const validationRules = {
-    required: ['fieldType'],
-    types: {
-      fieldType: 'string',
-    },
-    constraints: {
-      fieldType: {
-        enum: ['name', 'address', 'phone', 'email', 'zip']
-      }
-    }
-  };
-
-  validateParameters({ fieldType }, validationRules, 'standardize');
-
-
  */
-function standardize(input, fieldType) {
-  // Validate parameters
-  const validationRules = {
-    required: ['fieldType'],
-    types: {
-      fieldType: 'string',
-    },
-    constraints: {
-      fieldType: {
-        enum: ['name', 'address', 'phone', 'email', 'zip']
-      }
-    }
-  };
-
-  validateParameters({ fieldType }, validationRules, 'standardize');
-  
+function standardize(input, fieldName) {
   if (!input) return "";
+  
+  // Detect the semantic type from the field name
+  const semanticType = semanticTypes.detectSemanticType(fieldName);
+  const fieldType = semanticType ? semanticType.key : null;
+  
+  // Get matching field type for standardization
+  let standardizationType = 'text';
+  if (fieldType) {
+    if (fieldType === 'EMAIL') standardizationType = 'email';
+    else if (fieldType === 'PHONE') standardizationType = 'phone';
+    else if (['FIRST_NAME', 'LAST_NAME', 'FULL_NAME'].includes(fieldType)) standardizationType = 'name';
+    else if (['ADDRESS', 'ADDRESS_LINE_1'].includes(fieldType)) standardizationType = 'address';
+    else if (fieldType === 'ZIP_CODE') standardizationType = 'zip';
+  } else {
+    // Fallback detection based on field name patterns
+    if (fieldName.toLowerCase().includes('email')) standardizationType = 'email';
+    else if (fieldName.toLowerCase().includes('phone')) standardizationType = 'phone';
+    else if (fieldName.toLowerCase().includes('name')) standardizationType = 'name';
+    else if (fieldName.toLowerCase().includes('address')) standardizationType = 'address';
+    else if (fieldName.toLowerCase().includes('zip')) standardizationType = 'zip';
+  }
   
   // Map fieldType to UDF when in SQL context
   if (typeof input === 'string' && input.includes('${')) {
     // We're generating SQL, use UDFs
-    switch (fieldType) {
+    switch (standardizationType) {
       case 'name':
         return `\${ref("core.text_udfs")}.standardize_name(${input})`;
       case 'address':
@@ -64,26 +55,28 @@ function standardize(input, fieldType) {
   }
   
   // JavaScript implementation for non-SQL contexts
-  let result = input.toUpperCase().trim();
+  let result = input.toString().trim();
   
-  switch (fieldType) {
+  switch (standardizationType) {
     case 'name':
-      // Remove titles, suffixes, and extra spaces
-      result = result.replace(/^(MR|MRS|MS|DR|PROF)\.?\s+/, "")
+      // Convert to uppercase and remove titles, suffixes, and extra spaces
+      result = result.toUpperCase()
+                    .replace(/^(MR|MRS|MS|DR|PROF)\.?\s+/i, "")
                     .replace(/\s+(JR|SR|I|II|III|IV|V|ESQ|MD|PHD)\.?$/i, "")
                     .replace(/,\s*(JR|SR|I|II|III|IV|V|ESQ|MD|PHD)\.?$/i, "")
                     .replace(/,/g, "")
                     .replace(/\s+/g, " ");
       break;
     case 'address':
-      // Standardize common abbreviations
-      result = result.replace(/\bAPARTMENT\b|\bAPT\b/gi, "APT")
-                    .replace(/\bAVENUE\b|\bAVE\b/gi, "AVE")
-                    .replace(/\bBOULEVARD\b|\bBLVD\b/gi, "BLVD")
-                    .replace(/\bSTREET\b|\bST\b/gi, "ST")
-                    .replace(/\bROAD\b|\bRD\b/gi, "RD")
-                    .replace(/,\s*APARTMENT/gi, " APT")
-                    .replace(/,\s*APT/gi, " APT")
+      // Convert to uppercase and standardize common abbreviations
+      result = result.toUpperCase()
+                    .replace(/\bAPARTMENT\b|\bAPT\b/i, "APT")
+                    .replace(/\bAVENUE\b|\bAVE\b/i, "AVE")
+                    .replace(/\bBOULEVARD\b|\bBLVD\b/i, "BLVD")
+                    .replace(/\bSTREET\b|\bST\b/i, "ST")
+                    .replace(/\bROAD\b|\bRD\b/i, "RD")
+                    .replace(/,\s*APARTMENT/i, " APT")
+                    .replace(/,\s*APT/i, " APT")
                     .replace(/,/g, "")
                     .replace(/\s+/g, " ");
       break;
@@ -93,12 +86,15 @@ function standardize(input, fieldType) {
       break;
     case 'email':
       // Convert to lowercase (emails are case-insensitive)
-      result = input.toLowerCase().trim();
+      result = result.toLowerCase();
       break;
     case 'zip':
       // Take just the first 5 digits
       result = result.replace(/\D/g, "").substring(0, 5);
       break;
+    default:
+      // Default to uppercase for general text
+      result = result.toUpperCase();
   }
   return result;
 }
@@ -115,13 +111,8 @@ function calculateSimilarity(s1, s2, method = 'levenshtein') {
   if (!s1 || !s2) return 0;
   if (s1 === s2) return 1;
   
-  // If we're in SQL context (strings contain SQL placeholders)
   // Validate parameters
   const validationRules = {
-    required: ['method'],
-    types: {
-      method: 'string',
-    },
     constraints: {
       method: {
         enum: ['levenshtein', 'jaro_winkler', 'soundex', 'address']
@@ -131,6 +122,7 @@ function calculateSimilarity(s1, s2, method = 'levenshtein') {
 
   validateParameters({ method }, validationRules, 'calculateSimilarity');
 
+  // If we're in SQL context (strings contain SQL placeholders)
   if (typeof s1 === 'string' && s1.includes('${')) {
     switch (method.toLowerCase()) {
       case 'levenshtein':
@@ -159,10 +151,6 @@ function calculateSimilarity(s1, s2, method = 'levenshtein') {
 function phoneticCode(name, algorithm = 'soundex') {
   // Validate parameters
   const validationRules = {
-    required: ['algorithm'],
-    types: {
-      algorithm: 'string',
-    },
     constraints: {
       algorithm: {
         enum: ['soundex', 'metaphone']
@@ -220,17 +208,26 @@ function calculateConfidenceScore(sourceRecord, targetRecord, weights, threshold
   
   for (const field of fields) {
     if (sourceRecord[field] && targetRecord[field]) {
-      // Get semantic type for the field, default to field name if not in map
-      const semanticType = semanticTypeMap[field] ? field : field; // Placeholder for actual logic
-
-      // Choose appropriate similarity method based on field type
+      // Get semantic type for the field
+      const detectedType = semanticTypes.detectSemanticType(field);
+      
+      // Choose appropriate similarity method based on semantic type
       let similarityMethod = 'levenshtein';
-      if (field.toLowerCase().includes('name')) {
-        similarityMethod = 'soundex';
-      } else if (field.toLowerCase().includes('address')) {
-        similarityMethod = 'address';
-      } else if (field.toLowerCase().includes('email')) {
-        similarityMethod = 'levenshtein';
+      if (detectedType) {
+        switch (detectedType.key) {
+          case 'FIRST_NAME':
+          case 'LAST_NAME':
+          case 'FULL_NAME':
+            similarityMethod = 'soundex';
+            break;
+          case 'ADDRESS':
+          case 'ADDRESS_LINE_1':
+            similarityMethod = 'address';
+            break;
+          case 'EMAIL':
+            similarityMethod = 'levenshtein';
+            break;
+        }
       }
 
       const similarity = calculateSimilarity(
@@ -252,10 +249,13 @@ function calculateConfidenceScore(sourceRecord, targetRecord, weights, threshold
   // Calculate final confidence score
   const finalScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
   
+  // Use configured threshold from config if available
+  const configuredThreshold = config.getConfigValue('confidence_minimum', 0.85);
+  
   return {
     score: finalScore,
     fieldScores,
-    meetThreshold: finalScore >= 0.85, // Default threshold from requirements
+    meetThreshold: finalScore >= configuredThreshold,
     matchDetails: fields.map(f => ({
       field: f,
       source: sourceRecord[f],
@@ -294,32 +294,32 @@ function generateBlockingKeys(record, method) {
   switch(method) {
     case 'zipcode':
       if (record.ZipCode) {
-        keys.push(`ZIP:${standardize(record.ZipCode, 'zip')}`);
+        keys.push(`ZIP:${standardize(record.ZipCode, 'ZIP_CODE')}`);
       }
       break;
     case 'name_zip':
       if (record.LastName && record.ZipCode) {
-        const lastName = standardize(record.LastName, 'name');
-        const lastNamePrefix = lastName.substring(0, 4); // Use 4 characters to match the test
-        keys.push(`LZ:${lastNamePrefix}${standardize(record.ZipCode, 'zip')}`);
+        const lastName = standardize(record.LastName, 'LAST_NAME');
+        const lastNamePrefix = lastName.substring(0, 4);
+        keys.push(`LZ:${lastNamePrefix}${standardize(record.ZipCode, 'ZIP_CODE')}`);
       }
       break;
     case 'phone':
       if (record.PhoneNumber) {
-        keys.push(`PH:${standardize(record.PhoneNumber, 'phone')}`);
+        keys.push(`PH:${standardize(record.PhoneNumber, 'PHONE')}`);
       }
       break;
     case 'name_dob':
       if (record.LastName && record.DateOfBirth) {
-        const dob = record.DateOfBirth.replace(/\D/g, "");
+        const dob = standardize(record.DateOfBirth, 'DATE_OF_BIRTH').replace(/\D/g, "");
         if (dob.length >= 4) {
-          keys.push(`DB:${standardize(record.LastName.substring(0, 3), 'name')}${dob.substring(0, 4)}`);
+          keys.push(`DB:${standardize(record.LastName.substring(0, 3), 'LAST_NAME')}${dob.substring(0, 4)}`);
         }
       }
       break;
     case 'email_prefix':
       if (record.EmailAddress) {
-        const email = standardize(record.EmailAddress, 'email');
+        const email = standardize(record.EmailAddress, 'EMAIL');
         const prefix = email.split('@')[0];
         if (prefix) {
           keys.push(`EM:${prefix}`);
@@ -328,7 +328,7 @@ function generateBlockingKeys(record, method) {
       break;
     case 'soundex_name':
       if (record.FirstName && record.LastName) {
-        keys.push(`SN:${phoneticCode(record.FirstName)}_${phoneticCode(record.LastName)}`);
+        keys.push(`SN:${phoneticCode(standardize(record.FirstName, 'FIRST_NAME'))}_${phoneticCode(standardize(record.LastName, 'LAST_NAME'))}`);
       }
       break;
   }

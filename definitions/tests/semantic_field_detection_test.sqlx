@@ -1,0 +1,118 @@
+config {
+  type: "assertion",
+  name: "semantic_field_detection_test",
+  description: "Tests semantic field type detection and automatic standardization",
+  tags: ["test", "unit", "semantic_types"]
+}
+
+// Import semantic types module
+const semanticTypes = require("../../includes/semantic_types");
+const fieldMappingFactory = require("../../includes/field_mapping_factory");
+
+// This test demonstrates automatic semantic type detection and field mapping
+WITH test_data AS (
+  SELECT
+    'user@example.com' AS email_address,
+    '(555) 123-4567' AS phone_number,
+    'John Smith' AS customer_name,
+    '123 Main St, Apt 4B' AS mailing_address,
+    '12345-6789' AS postal_code,
+    'New York' AS city,
+    'NY' AS state_code,
+    '1985-06-15' AS date_of_birth
+  
+  UNION ALL
+  
+  SELECT
+    'jane.doe@company.co.uk' AS email_address,
+    '555.987.6543' AS phone_number,
+    'Jane Doe' AS customer_name,
+    '456 Oak Avenue' AS mailing_address,
+    '67890' AS postal_code,
+    'Los Angeles' AS city,
+    'CA' AS state_code,
+    '1990-12-25' AS date_of_birth
+),
+
+// Apply automatic field standardization based on semantic types
+standardized_data AS (
+  SELECT
+    ${semanticTypes.getStandardizationExpression('email_address', 'EMAIL')} AS email,
+    ${semanticTypes.getStandardizationExpression('phone_number', 'PHONE')} AS phone,
+    ${semanticTypes.getStandardizationExpression('customer_name', 'FULL_NAME')} AS full_name,
+    ${semanticTypes.getStandardizationExpression('mailing_address', 'ADDRESS')} AS address,
+    ${semanticTypes.getStandardizationExpression('postal_code', 'ZIP_CODE')} AS zip,
+    ${semanticTypes.getStandardizationExpression('city', 'CITY')} AS city,
+    ${semanticTypes.getStandardizationExpression('state_code', 'STATE')} AS state,
+    ${semanticTypes.getStandardizationExpression('date_of_birth', 'DATE_OF_BIRTH')} AS birth_date
+  FROM test_data
+),
+
+// Define expected results after standardization
+expected_results AS (
+  SELECT
+    'user@example.com' AS email,
+    '5551234567' AS phone,
+    'John Smith' AS full_name,
+    'APT 4B 123 MAIN ST' AS address, -- address is transformed with abbreviations standardized
+    '12345' AS zip,
+    'NEW YORK' AS city, 
+    'NY' AS state,
+    '1985-06-15' AS birth_date
+  
+  UNION ALL
+  
+  SELECT
+    'jane.doe@company.co.uk' AS email,
+    '5559876543' AS phone,
+    'Jane Doe' AS full_name,
+    '456 OAK AVE' AS address,
+    '67890' AS zip, 
+    'LOS ANGELES' AS city,
+    'CA' AS state, 
+    '1990-12-25' AS birth_date
+),
+
+// Compare actual vs expected results
+test_results AS (
+  SELECT
+    s.email = e.email AS email_match,
+    s.phone = e.phone AS phone_match,
+    s.full_name = e.full_name AS name_match,
+    -- Allow address normalization to be flexible
+    (s.address LIKE e.address || '%' OR e.address LIKE s.address || '%') AS address_match,
+    s.zip = e.zip AS zip_match,
+    s.city = e.city AS city_match,
+    s.state = e.state AS state_match,
+    s.birth_date = e.birth_date AS date_match
+  FROM standardized_data s
+  JOIN expected_results e
+  ON s.email = e.email
+)
+
+-- The test passes if all field standardizations match expected values
+SELECT
+  CASE
+    WHEN COUNT(*) = 0 THEN 'FAIL: No test data'
+    WHEN SUM(CASE WHEN NOT (
+      email_match AND 
+      phone_match AND 
+      name_match AND 
+      address_match AND 
+      zip_match AND 
+      city_match AND 
+      state_match AND 
+      date_match
+    ) THEN 1 ELSE 0 END) = 0 THEN 'PASS: All field types correctly detected and standardized'
+    ELSE CONCAT('FAIL: Standardization mismatches in ', 
+      SUM(CASE WHEN NOT email_match THEN 1 ELSE 0 END), ' email fields, ',
+      SUM(CASE WHEN NOT phone_match THEN 1 ELSE 0 END), ' phone fields, ',
+      SUM(CASE WHEN NOT name_match THEN 1 ELSE 0 END), ' name fields, ',
+      SUM(CASE WHEN NOT address_match THEN 1 ELSE 0 END), ' address fields, ',
+      SUM(CASE WHEN NOT zip_match THEN 1 ELSE 0 END), ' zip fields, ',
+      SUM(CASE WHEN NOT city_match THEN 1 ELSE 0 END), ' city fields, ',
+      SUM(CASE WHEN NOT state_match THEN 1 ELSE 0 END), ' state fields, ',
+      SUM(CASE WHEN NOT date_match THEN 1 ELSE 0 END), ' date fields'
+    )
+  END AS result
+FROM test_results 

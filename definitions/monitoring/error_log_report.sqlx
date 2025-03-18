@@ -1,0 +1,31 @@
+config {
+  type: "view",
+  name: "error_log_report",
+  description: "Summarized report of errors for monitoring",
+  tags: ["monitoring", "errors"]
+}
+
+-- Import error logger for constants
+const errorLogger = require("../../includes/error_logger");
+
+-- Create a summarized view of errors for monitoring
+SELECT
+  error_type,
+  severity,
+  COUNT(*) as error_count,
+  MIN(timestamp) as first_occurrence,
+  MAX(timestamp) as last_occurrence,
+  ARRAY_AGG(DISTINCT context ORDER BY context LIMIT 10) as affected_contexts,
+  ARRAY_AGG(DISTINCT source_file ORDER BY source_file LIMIT 10) as error_sources,
+  CASE
+    WHEN severity = '${errorLogger.SEVERITY.CRITICAL}' THEN 1
+    WHEN severity = '${errorLogger.SEVERITY.ERROR}' THEN 2
+    WHEN severity = '${errorLogger.SEVERITY.WARNING}' THEN 3
+    ELSE 4
+  END as severity_order
+FROM ${ref("error_log")}
+WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+GROUP BY error_type, severity, severity_order
+ORDER BY 
+  severity_order,
+  error_count DESC; 

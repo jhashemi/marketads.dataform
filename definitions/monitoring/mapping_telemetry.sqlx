@@ -1,0 +1,21 @@
+config {
+  type: "table",
+  name: "mapping_telemetry",
+  description: "Stores telemetry data for field mapping operations",
+  tags: ["monitoring", "telemetry"]
+}
+
+-- Create a table to track field mapping accuracy and performance
+CREATE OR REPLACE TABLE ${self()} (
+  mapping_id STRING,
+  timestamp TIMESTAMP,
+  source_table STRING,
+  target_table STRING,
+  total_fields INT64,
+  mapped_fields INT64,
+  mapping_accuracy FLOAT64,
+  execution_time_ms INT64,
+  config_options STRING,
+  mapping_details STRING,
+  execution_context STRING
+); 

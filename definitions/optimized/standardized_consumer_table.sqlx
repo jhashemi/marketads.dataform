@@ -1,0 +1,80 @@
+config {
+  type: "table",
+  name: "standardized_consumer_optimized",
+  description: "Optimized materialized view of standardized consumer data with partitioning and clustering",
+  columns: {
+    customer_id: "Unique identifier for the customer",
+    email: "Standardized email address",
+    phone: "Standardized phone number in E.164 format",
+    name: "Standardized customer name",
+    address: "Standardized mailing address",
+    postal_code: "Standardized postal code",
+    city: "Standardized city name",
+    state_code: "Standardized state code",
+    date_of_birth: "Date of birth in YYYY-MM-DD format",
+    tax_id: "Masked tax identifier (SSN)",
+    last_update_date: "Date of last record update",
+    source_system: "Originating system for the customer record"
+  },
+  bigquery: {
+    partitionBy: "last_update_date",
+    clusterBy: ["postal_code", "state_code"],
+    updatePartitionFilter: true
+  },
+  tags: ["optimized", "consumer", "standardized"]
+}
+
+// Import required modules
+const semanticTypes = require("../../includes/semantic_types");
+const fieldMappingFactory = require("../../includes/field_mapping_factory");
+
+// Source consumer table referenced using Dataform ref()
+WITH source_data AS (
+  SELECT * FROM ${ref("trustfinancial.Consumer_2023_q4")}
+),
+
+// Apply standardization to the source data
+standardized_data AS (
+  SELECT
+    customer_id,
+    ${semanticTypes.getStandardizationExpression("email", "email_address")} AS email,
+    ${semanticTypes.getStandardizationExpression("phone", "phone_number")} AS phone,
+    ${semanticTypes.getStandardizationExpression("name", "customer_name")} AS name,
+    ${semanticTypes.getStandardizationExpression("address", "mailing_address")} AS address,
+    ${semanticTypes.getStandardizationExpression("postal_code", "zip_code")} AS postal_code,
+    ${semanticTypes.getStandardizationExpression("city", "city")} AS city,
+    ${semanticTypes.getStandardizationExpression("state_code", "state")} AS state_code,
+    ${semanticTypes.getStandardizationExpression("date", "birth_date")} AS date_of_birth,
+    ${semanticTypes.getStandardizationExpression("ssn", "ssn")} AS tax_id,
+    COALESCE(last_update_ts, CURRENT_TIMESTAMP()) AS last_update_date,
+    source_system
+  FROM source_data
+)
+
+// Final optimized table with additional computed metrics
+SELECT
+  customer_id,
+  email,
+  phone,
+  name,
+  address,
+  postal_code,
+  city,
+  state_code,
+  date_of_birth,
+  tax_id,
+  last_update_date,
+  source_system,
+  
+  -- Additional computed fields for analytics
+  DATE_DIFF(CURRENT_DATE(), PARSE_DATE('%Y-%m-%d', date_of_birth), YEAR) AS customer_age,
+  
+  -- Geography grouping for analysis
+  CASE
+    WHEN state_code IN ('CA', 'OR', 'WA', 'NV', 'AZ') THEN 'West'
+    WHEN state_code IN ('MT', 'ID', 'WY', 'CO', 'NM', 'ND', 'SD', 'NE', 'KS', 'OK', 'TX') THEN 'Mountain/Central'
+    WHEN state_code IN ('MN', 'IA', 'MO', 'AR', 'LA', 'WI', 'IL', 'MI', 'IN', 'OH', 'KY', 'TN', 'MS', 'AL') THEN 'Midwest/South'
+    WHEN state_code IN ('ME', 'NH', 'VT', 'MA', 'RI', 'CT', 'NY', 'PA', 'NJ', 'DE', 'MD', 'DC', 'VA', 'WV', 'NC', 'SC', 'GA', 'FL') THEN 'Northeast/Southeast'
+    ELSE 'Other'
+  END AS region
+FROM standardized_data; 

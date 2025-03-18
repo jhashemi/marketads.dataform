@@ -1,0 +1,40 @@
+config {
+  type: "view",
+  name: "mapping_alerts",
+  description: "Alerts for field mapping issues based on telemetry data",
+  tags: ["monitoring", "alerts"]
+}
+
+-- Import test config for threshold values
+const testConfig = require("../../includes/test_config");
+
+-- Create a view that identifies potential mapping issues
+SELECT
+  mapping_id,
+  timestamp,
+  source_table,
+  target_table,
+  mapping_accuracy,
+  total_fields,
+  mapped_fields,
+  execution_time_ms,
+  CASE
+    WHEN mapping_accuracy < 0.7 THEN 'HIGH'
+    WHEN mapping_accuracy < ${testConfig.errorThresholds.mappingAccuracyThreshold} THEN 'MEDIUM'
+    ELSE 'LOW'
+  END as alert_severity,
+  CASE
+    WHEN mapping_accuracy < 0.7 THEN 'Critical mapping failure - less than 70% of fields mapped'
+    WHEN mapping_accuracy < ${testConfig.errorThresholds.mappingAccuracyThreshold} THEN 'Mapping below threshold - check field definitions'
+    ELSE 'Minor mapping issues detected'
+  END as alert_message,
+  mapping_details,
+  execution_context
+FROM ${ref("mapping_telemetry")}
+WHERE 
+  -- Only show recent mapping results with issues
+  timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+  AND mapping_accuracy < 0.99
+ORDER BY 
+  alert_severity,
+  timestamp DESC; 

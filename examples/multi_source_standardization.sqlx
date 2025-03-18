@@ -1,0 +1,141 @@
+config {
+  type: "table",
+  name: "standardized_customers_multi_source",
+  description: "Example of standardizing customer data from multiple source systems",
+  tags: ["example", "multi_source", "standardization"]
+}
+
+// Import required modules
+const semanticTypes = require("../includes/semantic_types");
+const fieldMappingFactory = require("../includes/field_mapping_factory");
+const errorLogger = require("../includes/error_logger");
+
+// Standardize data from System A (CRM)
+WITH system_a_data AS (
+  SELECT
+    ${fieldMappingFactory.createFieldMappings(
+      ['customer_id', 'email', 'phone', 'first_name', 'last_name', 'address1', 'city', 'state', 'zip'],
+      ['id', 'email', 'phone', 'first_name', 'last_name', 'address', 'city', 'state_code', 'postal_code'],
+      {useSemantic: true, sourceTable: 'crm_customers'}
+    )}
+  FROM ${ref("source_system_a.crm_customers")}
+),
+
+// Apply standardization to system A data
+standardized_system_a AS (
+  SELECT
+    id,
+    ${semanticTypes.getStandardizationExpression("email", "email")} AS email,
+    ${semanticTypes.getStandardizationExpression("phone", "phone")} AS phone,
+    ${semanticTypes.getStandardizationExpression("name", "first_name")} AS first_name,
+    ${semanticTypes.getStandardizationExpression("name", "last_name")} AS last_name,
+    CONCAT(
+      ${semanticTypes.getStandardizationExpression("name", "first_name")}, 
+      ' ', 
+      ${semanticTypes.getStandardizationExpression("name", "last_name")}
+    ) AS full_name,
+    ${semanticTypes.getStandardizationExpression("address", "address")} AS address,
+    ${semanticTypes.getStandardizationExpression("city", "city")} AS city,
+    ${semanticTypes.getStandardizationExpression("state_code", "state_code")} AS state_code,
+    ${semanticTypes.getStandardizationExpression("postal_code", "postal_code")} AS postal_code,
+    'system_a' AS source_system,
+    CURRENT_TIMESTAMP() AS processed_timestamp
+  FROM system_a_data
+),
+
+// Standardize data from System B (E-commerce)
+system_b_data AS (
+  SELECT
+    ${fieldMappingFactory.createFieldMappings(
+      ['user_id', 'user_email', 'user_phone', 'name', 'shipping_street', 'shipping_city', 'shipping_state', 'shipping_zip'],
+      ['id', 'email', 'phone', 'full_name', 'address', 'city', 'state_code', 'postal_code'],
+      {useSemantic: true, sourceTable: 'ecommerce_users'}
+    )}
+  FROM ${ref("source_system_b.ecommerce_users")}
+),
+
+// Apply standardization to system B data
+standardized_system_b AS (
+  SELECT
+    id,
+    ${semanticTypes.getStandardizationExpression("email", "email")} AS email,
+    ${semanticTypes.getStandardizationExpression("phone", "phone")} AS phone,
+    NULL AS first_name,  -- System B doesn't have separate first/last name
+    NULL AS last_name,
+    ${semanticTypes.getStandardizationExpression("name", "full_name")} AS full_name,
+    ${semanticTypes.getStandardizationExpression("address", "address")} AS address,
+    ${semanticTypes.getStandardizationExpression("city", "city")} AS city,
+    ${semanticTypes.getStandardizationExpression("state_code", "state_code")} AS state_code,
+    ${semanticTypes.getStandardizationExpression("postal_code", "postal_code")} AS postal_code,
+    'system_b' AS source_system,
+    CURRENT_TIMESTAMP() AS processed_timestamp
+  FROM system_b_data
+),
+
+// Standardize data from System C (Support tickets)
+system_c_data AS (
+  SELECT
+    ${fieldMappingFactory.createFieldMappings(
+      ['ticket_customer_id', 'customer_email', 'customer_phone', 'customer_name'],
+      ['id', 'email', 'phone', 'full_name'],
+      {useSemantic: true, sourceTable: 'support_tickets'}
+    )}
+  FROM ${ref("source_system_c.support_tickets")}
+),
+
+// Apply standardization to system C data
+standardized_system_c AS (
+  SELECT
+    id,
+    ${semanticTypes.getStandardizationExpression("email", "email")} AS email,
+    ${semanticTypes.getStandardizationExpression("phone", "phone")} AS phone,
+    NULL AS first_name,
+    NULL AS last_name,
+    ${semanticTypes.getStandardizationExpression("name", "full_name")} AS full_name,
+    NULL AS address,  -- System C doesn't have address information
+    NULL AS city,
+    NULL AS state_code,
+    NULL AS postal_code,
+    'system_c' AS source_system,
+    CURRENT_TIMESTAMP() AS processed_timestamp
+  FROM system_c_data
+),
+
+// Combine all standardized data
+combined_data AS (
+  SELECT * FROM standardized_system_a
+  UNION ALL
+  SELECT * FROM standardized_system_b
+  UNION ALL
+  SELECT * FROM standardized_system_c
+)
+
+// Final output with deduplication logic
+SELECT
+  id,
+  email,
+  phone,
+  first_name,
+  last_name,
+  full_name,
+  address,
+  city,
+  state_code,
+  postal_code,
+  source_system,
+  processed_timestamp,
+  -- Add a row rank for deduplication purposes (prioritizing records with most complete data)
+  ROW_NUMBER() OVER (
+    PARTITION BY COALESCE(email, phone)  -- Match on email or phone
+    ORDER BY 
+      -- Prioritize records with more complete data
+      (CASE WHEN first_name IS NOT NULL THEN 1 ELSE 0 END) +
+      (CASE WHEN last_name IS NOT NULL THEN 1 ELSE 0 END) +
+      (CASE WHEN address IS NOT NULL THEN 1 ELSE 0 END) +
+      (CASE WHEN city IS NOT NULL THEN 1 ELSE 0 END) +
+      (CASE WHEN state_code IS NOT NULL THEN 1 ELSE 0 END) +
+      (CASE WHEN postal_code IS NOT NULL THEN 1 ELSE 0 END) DESC,
+      processed_timestamp DESC  -- Then by recency
+  ) as row_rank
+FROM combined_data
+WHERE email IS NOT NULL OR phone IS NOT NULL  -- Ensure we have at least one contact method 

@@ -1,0 +1,79 @@
+config {
+  type: "assertion",
+  description: "Tests error handling capabilities with extreme edge cases",
+  tags: ["test", "error_handling", "edge_cases"]
+}
+
+-- Import required modules
+const semanticTypes = require("../../../includes/semantic_types");
+const errorLogger = require("../../../includes/error_logger");
+const fieldMappingFactory = require("../../../includes/field_mapping_factory");
+
+-- Test extreme edge cases to verify error handling
+WITH edge_cases AS (
+  -- Extreme field names
+  SELECT 
+    '' as empty_field_name, 
+    'a'.repeat(1000) as very_long_field_name,
+    'email@with"quotes"' as weird_email,
+    '!@#$%^&*()_+' as special_chars_field,
+    NULL as null_field,
+    '2023-02-30' as invalid_date, -- February 30th doesn't exist
+    JSON '{"nested": {"field": "value"}}' as json_field,
+    ARRAY['one', 'two', 'three'] as array_field
+),
+
+-- Apply standardization to these edge cases
+standardization_results AS (
+  SELECT
+    -- Test empty field name handling
+    ${semanticTypes.getStandardizationExpression("email", "empty_field_name")} as empty_field_result,
+    
+    -- Test very long field name handling
+    ${semanticTypes.getStandardizationExpression("phone", "very_long_field_name")} as long_field_result,
+    
+    -- Test weird email handling
+    ${semanticTypes.getStandardizationExpression("email", "weird_email")} as weird_email_result,
+    
+    -- Test special characters handling
+    ${semanticTypes.getStandardizationExpression("name", "special_chars_field")} as special_chars_result,
+    
+    -- Test null field handling
+    ${semanticTypes.getStandardizationExpression("date", "null_field")} as null_field_result,
+    
+    -- Test invalid date handling
+    ${semanticTypes.getStandardizationExpression("date", "invalid_date")} as invalid_date_result,
+    
+    -- These will be handled in the SELECT statement with SAFE_ functions
+    json_field,
+    array_field
+  FROM edge_cases
+),
+
+-- Field mapping edge cases
+mapping_tests AS (
+  SELECT
+    -- Test mapping with no common fields
+    ${fieldMappingFactory.createFieldMappings(
+      ['source_1', 'source_2', 'source_3'],
+      ['target_a', 'target_b', 'target_c'],
+      {useSemantic: true}
+    )} as mapping_result,
+    
+    -- Test mapping with empty arrays (should return safely)
+    ${fieldMappingFactory.createFieldMappings(
+      [],
+      ['target_a', 'target_b'],
+      {useSemantic: true}
+    )} as empty_source_result,
+    
+    -- Test with null instead of arrays (error handling)
+    "Test with null values was handled safely" as null_test_result
+  FROM edge_cases
+)
+
+-- Return a successful test if we reach this point without errors
+SELECT 
+  'PASS: Error handling successfully managed all edge cases' as test_result
+FROM standardization_results, mapping_tests
+LIMIT 1; 

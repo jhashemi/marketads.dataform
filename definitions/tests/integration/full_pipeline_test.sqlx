@@ -1,0 +1,112 @@
+config {
+  type: "table",
+  name: "full_pipeline_test",
+  schema: "marketads_test",
+  description: "End-to-end test of field mapping and standardization",
+  tags: ["integration", "pipeline"]
+}
+
+-- Import required modules
+const semanticTypes = require("../../../includes/semantic_types");
+const fieldMappingFactory = require("../../../includes/field_mapping_factory");
+const testConfig = require("../../../includes/test_config");
+
+-- Test data with various field formats
+WITH source_data AS (
+  SELECT 
+    'John Smith' as customer_name, 
+    'john@example.com' as email_addr, 
+    '555-123-4567' as phone_number,
+    '123 Main St, Apt 4B' as cust_address,
+    '90210' as zip,
+    'Los Angeles' as city,
+    'CA' as state,
+    '1990-01-15' as birth_date,
+    '123-45-6789' as ssn,
+    'M' as gender,
+    100.50 as account_balance
+),
+
+-- Define expected mapping of source fields to target fields
+field_mappings AS (
+  SELECT
+    ${fieldMappingFactory.createFieldMappings(
+      ['customer_name', 'email_addr', 'phone_number', 'cust_address', 'zip', 'city', 'state', 'birth_date', 'ssn', 'gender', 'account_balance'],
+      ['name', 'email', 'phone', 'address', 'postal_code', 'city', 'state_code', 'date_of_birth', 'tax_id', 'gender', 'balance'],
+      {useSemantic: true}
+    )}
+  FROM source_data
+),
+
+-- Apply standardization to all mapped fields
+standardized_data AS (
+  SELECT
+    ${semanticTypes.getStandardizationExpression("name", "name")} as name,
+    ${semanticTypes.getStandardizationExpression("email", "email")} as email,
+    ${semanticTypes.getStandardizationExpression("phone", "phone")} as phone,
+    ${semanticTypes.getStandardizationExpression("address", "address")} as address,
+    ${semanticTypes.getStandardizationExpression("postal_code", "postal_code")} as postal_code,
+    ${semanticTypes.getStandardizationExpression("city", "city")} as city,
+    ${semanticTypes.getStandardizationExpression("state_code", "state_code")} as state_code,
+    ${semanticTypes.getStandardizationExpression("date", "date_of_birth")} as date_of_birth,
+    ${semanticTypes.getStandardizationExpression("ssn", "tax_id")} as tax_id,
+    gender,
+    balance
+  FROM field_mappings
+),
+
+-- Define expected results after standardization
+expected_results AS (
+  SELECT
+    'john smith' as name,
+    'john@example.com' as email,
+    '+15551234567' as phone,
+    '123 main st, apt 4b' as address,
+    '90210' as postal_code,
+    'los angeles' as city,
+    'CA' as state_code,
+    '1990-01-15' as date_of_birth,
+    'XXX-XX-6789' as tax_id,
+    'M' as gender,
+    100.50 as balance
+),
+
+-- Compare actual results with expected results
+test_results AS (
+  SELECT
+    sd.*,
+    CASE
+      WHEN sd.name = er.name 
+        AND sd.email = er.email 
+        AND sd.phone = er.phone 
+        AND sd.address = er.address 
+        AND sd.postal_code = er.postal_code 
+        AND sd.city = er.city 
+        AND sd.state_code = er.state_code 
+        AND sd.date_of_birth = er.date_of_birth 
+        AND sd.tax_id = er.tax_id 
+        AND sd.gender = er.gender 
+        AND sd.balance = er.balance
+      THEN 'PASS'
+      ELSE 'FAIL'
+    END as test_result
+  FROM standardized_data sd
+  CROSS JOIN expected_results er
+)
+
+-- Final test output
+SELECT 
+  name,
+  email,
+  phone,
+  address,
+  postal_code,
+  city,
+  state_code,
+  date_of_birth,
+  tax_id,
+  gender,
+  balance,
+  test_result,
+  CURRENT_TIMESTAMP() as test_timestamp
+FROM test_results 

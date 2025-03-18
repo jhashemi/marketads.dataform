@@ -1,0 +1,36 @@
+config {
+  type: "assertion",
+  description: "Validates email standardization across tables",
+  tags: ["regression", "semantic_types", "email"]
+}
+
+-- Import required modules
+const semanticTypes = require("../../../includes/semantic_types");
+
+-- Test various email formats to ensure proper standardization
+WITH test_cases AS (
+  SELECT 'test@example.com' as input, 'test@example.com' as expected UNION ALL
+  SELECT 'TEST@EXAMPLE.COM' as input, 'test@example.com' as expected UNION ALL
+  SELECT 'test@EXAMPLE.com' as input, 'test@example.com' as expected UNION ALL
+  SELECT ' test@example.com ' as input, 'test@example.com' as expected UNION ALL
+  SELECT 'test.name@example.com' as input, 'test.name@example.com' as expected UNION ALL
+  SELECT 'test+label@example.com' as input, 'test+label@example.com' as expected UNION ALL
+  SELECT '"test"@example.com' as input, 'test@example.com' as expected UNION ALL
+  SELECT 'username@example.co.uk' as input, 'username@example.co.uk' as expected
+),
+standardized_results AS (
+  SELECT 
+    input,
+    expected,
+    ${semanticTypes.getStandardizationExpression("email", "input")} as standardized
+  FROM test_cases
+)
+
+-- Return any rows where standardization didn't produce expected results
+SELECT 
+  input, 
+  expected, 
+  standardized,
+  'Email standardization failed: expected "' || expected || '" but got "' || standardized || '"' as failure_message
+FROM standardized_results
+WHERE standardized != expected 

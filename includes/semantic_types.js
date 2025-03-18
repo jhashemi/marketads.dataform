@@ -1,163 +1,451 @@
 /**
- * Semantic Type System
+ * Semantic Types Module
  * 
- * This module provides a comprehensive system for field type identification,
- * normalization, and validation across different data sources.
+ * This module handles semantic type mapping, detection, and validation.
+ * It provides utilities to automatically detect semantic types from field names
+ * and implement consistent type checking across the codebase.
  */
 
-// Key semantic types organized by domain
-const semanticTypeMap = {
+const { projectConfig } = dataform || { projectConfig: { vars: {} } };
+
+// Import error logger
+const errorLogger = require('./error_logger');
+
+// Semantic type definitions with pattern matching
+const SEMANTIC_TYPES = {
   // Person identifiers
-  email: ["email", "email_address", "emailAddress", "e_mail", "contact_email", "personal_email", "business_email"],
-  firstName: ["firstname", "first_name", "personfirstname", "fname", "given_name", "first"],
-  lastName: ["lastname", "last_name", "personlastname", "lname", "surname", "last", "family_name"],
-  fullName: ["fullname", "full_name", "name", "person_name", "personname", "customer_name"],
-  phoneNumber: ["phone", "phonenumber", "phone_number", "telephone", "tel", "mobile", "cell", "home_phone", "work_phone", "mobile_phone"],
-  dateOfBirth: ["dob", "date_of_birth", "birthdate", "birth_date", "birthdate", "birth_day"],
-  age: ["age", "person_age", "customer_age", "years_old"],
-  gender: ["gender", "sex"],
-  ssn: ["ssn", "social_security", "social_security_number", "tax_id"],
+  EMAIL: {
+    name: "EMAIL",
+    description: "Email address",
+    patterns: [
+      /^email$/i,
+      /^e[-_]?mail[-_]?addr(ess)?$/i,
+      /^contact[-_]?email$/i
+    ],
+    validation: (value) => typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+  },
   
-  // Address fields
-  address: ["address", "street_address", "streetaddress", "addr", "street", "residence_address", "mailing_address"],
-  addressLine1: ["address1", "address_line1", "addressline1", "addr1", "street_address_1"],
-  addressLine2: ["address2", "address_line2", "addressline2", "addr2", "street_address_2", "apt", "unit", "suite"],
-  city: ["city", "town", "municipality", "locality", "residence_city", "mailing_city"],
-  state: ["state", "province", "region", "state_province", "residence_state", "mailing_state", "st"],
-  zipCode: ["zipcode", "zip_code", "zip", "postal_code", "postalcode", "residence_zip", "mailing_zip", "postal"],
-  country: ["country", "nation", "country_code"],
+  PHONE: {
+    name: "PHONE",
+    description: "Phone number",
+    patterns: [
+      /^phone([-_]?number)?$/i,
+      /^contact[-_]?phone$/i,
+      /^mobile([-_]?number)?$/i,
+      /^cell([-_]?phone)?$/i,
+      /^telephone$/i
+    ],
+    validation: (value) => typeof value === 'string' && 
+      (/^\+?[0-9]{10,15}$/.test(value.replace(/[\s\-\(\)\.]/g, '')) || 
+       /^[0-9]{3}[-\.\s][0-9]{3}[-\.\s][0-9]{4}$/.test(value))
+  },
   
-  // Business fields
-  companyName: ["companyname", "company_name", "company", "organization", "business_name", "employer", "firm"],
-  website: ["website", "web_site", "domain", "url", "web", "homepage"],
+  FIRST_NAME: {
+    name: "FIRST_NAME",
+    description: "First name",
+    patterns: [
+      /^first[-_]?name$/i,
+      /^fname$/i,
+      /^given[-_]?name$/i,
+      /^person[-_]?first[-_]?name$/i
+    ],
+    validation: (value) => typeof value === 'string' && value.length > 0
+  },
   
-  // Transaction fields
-  orderId: ["orderid", "order_id", "ordernumber", "order_number"],
-  transactionId: ["transactionid", "transaction_id", "txnid", "txn_id"],
-  purchaseAmount: ["amount", "purchaseamount", "purchase_amount", "price", "cost", "revenue"],
+  LAST_NAME: {
+    name: "LAST_NAME",
+    description: "Last name/surname",
+    patterns: [
+      /^last[-_]?name$/i,
+      /^lname$/i,
+      /^surname$/i,
+      /^family[-_]?name$/i,
+      /^person[-_]?last[-_]?name$/i
+    ],
+    validation: (value) => typeof value === 'string' && value.length > 0
+  },
   
-  // Dates and times
-  date: ["date", "day", "event_date"],
-  timestamp: ["timestamp", "time", "datetime", "date_time", "eventtime"],
+  FULL_NAME: {
+    name: "FULL_NAME",
+    description: "Full name (combined first and last)",
+    patterns: [
+      /^full[-_]?name$/i,
+      /^name$/i,
+      /^customer[-_]?name$/i,
+      /^person[-_]?name$/i
+    ],
+    validation: (value) => typeof value === 'string' && value.length > 0 && value.includes(' ')
+  },
   
-  // Marketing fields
-  campaign: ["campaign", "campaignname", "campaign_name", "utm_campaign"],
-  source: ["source", "utm_source", "traffic_source", "trafficsource"],
-  medium: ["medium", "utm_medium", "channel", "marketing_channel"],
+  DATE_OF_BIRTH: {
+    name: "DATE_OF_BIRTH",
+    description: "Date of birth",
+    patterns: [
+      /^dob$/i,
+      /^birth[-_]?date$/i,
+      /^date[-_]?of[-_]?birth$/i,
+      /^birth[-_]?day$/i
+    ],
+    validation: (value) => {
+      if (value instanceof Date) return true;
+      if (typeof value !== 'string') return false;
+      
+      // Check common date formats
+      return /^\d{4}-\d{2}-\d{2}$/.test(value) || // YYYY-MM-DD
+             /^\d{2}\/\d{2}\/\d{4}$/.test(value) || // MM/DD/YYYY
+             /^\d{2}-\d{2}-\d{4}$/.test(value); // MM-DD-YYYY
+    }
+  },
   
-  // IDs and identifiers
-  userId: ["userid", "user_id", "visitorid", "visitor_id", "customerid", "customer_id"],
-  deviceId: ["deviceid", "device_id", "hardwareid", "hardware_id", "did"]
+  SSN: {
+    name: "SSN",
+    description: "Social Security Number",
+    patterns: [
+      /^ssn$/i,
+      /^social[-_]?security$/i,
+      /^social[-_]?security[-_]?(num|number)$/i,
+      /^tax[-_]?id$/i
+    ],
+    validation: (value) => {
+      if (typeof value !== 'string') return false;
+      const cleaned = value.replace(/[^0-9]/g, '');
+      return cleaned.length === 9 && !/^0{9}$|^9{9}$/.test(cleaned);
+    }
+  },
+  
+  // Address components
+  ADDRESS: {
+    name: "ADDRESS",
+    description: "Full street address",
+    patterns: [
+      /^address$/i,
+      /^street[-_]?address$/i,
+      /^mailing[-_]?address$/i,
+      /^addr$/i,
+      /^full[-_]?address$/i
+    ],
+    validation: (value) => typeof value === 'string' && value.length > 5
+  },
+  
+  ADDRESS_LINE_1: {
+    name: "ADDRESS_LINE_1",
+    description: "First line of street address",
+    patterns: [
+      /^addr(ess)?[-_]?line[-_]?1$/i,
+      /^addr(ess)?[-_]?1$/i,
+      /^addr(ess)?[-_]?line$/i,
+      /^street[-_]?addr(ess)?$/i
+    ],
+    validation: (value) => typeof value === 'string' && value.length > 0
+  },
+  
+  ZIP_CODE: {
+    name: "ZIP_CODE",
+    description: "ZIP/Postal code",
+    patterns: [
+      /^zip$/i,
+      /^zip[-_]?code$/i,
+      /^postal[-_]?code$/i,
+      /^post[-_]?code$/i
+    ],
+    validation: (value) => {
+      if (typeof value !== 'string' && typeof value !== 'number') return false;
+      const strValue = String(value);
+      // US 5-digit ZIP or ZIP+4
+      return /^\d{5}(-\d{4})?$/.test(strValue) || 
+        // Common international formats (looser validation)
+        /^[A-Z0-9]{3,10}$/i.test(strValue.replace(/\s/g, ''));
+    }
+  },
+  
+  CITY: {
+    name: "CITY",
+    description: "City name",
+    patterns: [
+      /^city$/i,
+      /^city[-_]?name$/i,
+      /^town$/i,
+      /^municipality$/i
+    ],
+    validation: (value) => typeof value === 'string' && value.length > 0
+  },
+  
+  STATE: {
+    name: "STATE",
+    description: "State/Province",
+    patterns: [
+      /^state$/i,
+      /^province$/i,
+      /^state[-_]?code$/i,
+      /^state[-_]?province$/i,
+      /^prov$/i
+    ],
+    validation: (value) => typeof value === 'string' && value.length > 0
+  },
+  
+  // Additional identifiers
+  DEVICE_ID: {
+    name: "DEVICE_ID",
+    description: "Device identifier",
+    patterns: [
+      /^device[-_]?id$/i,
+      /^device[-_]?identifier$/i,
+      /^did$/i,
+      /^device[-_]?token$/i
+    ],
+    validation: (value) => typeof value === 'string' && value.length > 0
+  },
+  
+  USER_ID: {
+    name: "USER_ID",
+    description: "User identifier",
+    patterns: [
+      /^user[-_]?id$/i,
+      /^uid$/i,
+      /^user[-_]?identifier$/i,
+      /^customer[-_]?id$/i,
+      /^cid$/i
+    ],
+    validation: (value) => (typeof value === 'string' || typeof value === 'number') && value !== ''
+  }
 };
 
 /**
- * Regex patterns for validating semantic types
- */
-const validationPatterns = {
-  email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-  phoneNumber: /^\+?[0-9]{10,15}$/,
-  zipCode: /^[0-9]{5}(-[0-9]{4})?$/,
-  dateOfBirth: /^(19|20)\d\d[- /.](0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])$/,
-  ssn: /^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$/
-};
-
-/**
- * Finds the semantic type for a given field name
+ * Detects the semantic type of a field based on its name
  * 
- * @param {string} fieldName - The field name to look up
- * @returns {string|null} - The semantic type or null if not found
+ * @param {string} fieldName - The name of the field to detect
+ * @returns {Object|null} The detected semantic type object or null if not detected
  */
-function getSemanticType(fieldName) {
+function detectSemanticType(fieldName) {
   if (!fieldName) return null;
   
-  const normalizedFieldName = fieldName.toLowerCase().trim().replace(/[^a-z0-9_]/g, '');
+  // Convert field name to lowercase for case-insensitive matching
+  const normalizedFieldName = fieldName.trim().toLowerCase();
   
-  for (const [semanticType, aliases] of Object.entries(semanticTypeMap)) {
-    if (aliases.some(alias => alias.toLowerCase() === normalizedFieldName)) {
-      return semanticType;
+  // Try to match against patterns
+  for (const [typeKey, typeObj] of Object.entries(SEMANTIC_TYPES)) {
+    for (const pattern of typeObj.patterns) {
+      if (pattern.test(normalizedFieldName)) {
+        return { ...typeObj, key: typeKey };
+      }
     }
   }
   
-  // Try fuzzy matching if exact match fails
-  const partialMatches = [];
-  for (const [semanticType, aliases] of Object.entries(semanticTypeMap)) {
-    if (aliases.some(alias => normalizedFieldName.includes(alias.toLowerCase()))) {
-      partialMatches.push({ type: semanticType, score: 0.8 });
-    } else if (aliases.some(alias => alias.toLowerCase().includes(normalizedFieldName))) {
-      partialMatches.push({ type: semanticType, score: 0.6 });
-    }
-  }
-  
-  if (partialMatches.length > 0) {
-    // Return the match with highest score
-    partialMatches.sort((a, b) => b.score - a.score);
-    return partialMatches[0].type;
-  }
-  
+  // No match found
   return null;
 }
 
 /**
- * Checks if a field matches a specific semantic type
+ * Validates a value against its semantic type
  * 
- * @param {string} fieldName - The field name to check
- * @param {string} semanticType - The semantic type to match against
- * @returns {boolean} - Whether the field matches the semantic type
+ * @param {string} semanticType - The semantic type key
+ * @param {*} value - The value to validate
+ * @returns {boolean} True if the value is valid for the semantic type
  */
-function isSemanticType(fieldName, semanticType) {
-  if (!fieldName || !semanticType) return false;
-  
-  const normalizedFieldName = fieldName.toLowerCase().trim().replace(/[^a-z0-9_]/g, '');
-  return semanticTypeMap[semanticType]?.some(alias => 
-    alias.toLowerCase() === normalizedFieldName ||
-    normalizedFieldName.includes(alias.toLowerCase())
-  ) || false;
+function validateBySemanticType(semanticType, value) {
+  const type = SEMANTIC_TYPES[semanticType];
+  if (!type || !type.validation) return false;
+  return type.validation(value);
 }
 
 /**
- * Validates a value against the expected format for a semantic type
+ * Gets standardized field name for a semantic type
  * 
- * @param {string} value - The value to validate
- * @param {string} semanticType - The semantic type to validate against
- * @returns {boolean} - Whether the value is valid for the semantic type
+ * @param {string} semanticType - The semantic type key
+ * @returns {string} The standardized field name
  */
-function validateValue(value, semanticType) {
-  if (!value || !semanticType) return false;
+function getStandardFieldName(semanticType) {
+  const customFieldNames = (projectConfig.vars || {}).standardized_field_names || {};
+  const type = SEMANTIC_TYPES[semanticType];
   
-  // For types with regex validation patterns
-  if (validationPatterns[semanticType]) {
-    return validationPatterns[semanticType].test(value);
+  if (!type) return null;
+  
+  // First check if there's a custom name defined in project vars
+  if (customFieldNames[semanticType]) {
+    return customFieldNames[semanticType];
   }
   
-  // Basic validation for types without specific patterns
-  switch(semanticType) {
-    case 'firstName':
-    case 'lastName':
-    case 'fullName':
-      return value.length > 1 && /^[a-zA-Z\s'-]+$/.test(value);
-    case 'age':
-      return !isNaN(value) && parseInt(value) > 0 && parseInt(value) < 120;
-    default:
-      return true; // No specific validation
-  }
+  // Otherwise use default naming convention
+  return type.name.toLowerCase();
 }
-
 
 /**
- * Gets all potential field names for a semantic type
+ * Returns SQL expression to standardize a field based on its semantic type
  * 
- * @param {string} semanticType - The semantic type to get field names for
- * @returns {string[]} - Array of potential field names
+ * @param {string} fieldName - Field name
+ * @param {string} semanticType - Semantic type key
+ * @returns {string} SQL expression to standardize the field
  */
-function getPotentialFieldNames(semanticType) {
-  return semanticTypeMap[semanticType] || [];
+function getStandardizationExpression(fieldName, semanticType) {
+  try {
+    switch (semanticType.toLowerCase()) {
+      case "email":
+        return `LOWER(TRIM(${fieldName}))`;
+      
+      case "phone":
+        return `
+          REGEXP_REPLACE(
+            REGEXP_REPLACE(
+              REGEXP_REPLACE(${fieldName}, r'[\\s.-]', ''),
+              r'^\\+?1', '+1'
+            ),
+            r'^([0-9]{10})$', '+1\\1'
+          )
+        `;
+      
+      case "name":
+        return `LOWER(TRIM(${fieldName}))`;
+      
+      case "address":
+        return `LOWER(TRIM(${fieldName}))`;
+      
+      case "postal_code":
+        return `TRIM(${fieldName})`;
+      
+      case "city":
+        return `LOWER(TRIM(${fieldName}))`;
+      
+      case "state_code":
+        return `UPPER(TRIM(${fieldName}))`;
+      
+      case "date":
+        return `
+          CASE
+            WHEN ${fieldName} IS NULL THEN NULL
+            WHEN REGEXP_CONTAINS(${fieldName}, r'^\\d{4}-\\d{2}-\\d{2}$') THEN ${fieldName}
+            WHEN REGEXP_CONTAINS(${fieldName}, r'^\\d{2}/\\d{2}/\\d{4}$') 
+              THEN FORMAT_DATE('%Y-%m-%d', PARSE_DATE('%m/%d/%Y', ${fieldName}))
+            ELSE ${fieldName}
+          END
+        `;
+      
+      case "ssn":
+        return `
+          CONCAT(
+            'XXX-XX-',
+            SUBSTR(
+              REGEXP_REPLACE(${fieldName}, r'[^0-9]', ''),
+              LENGTH(REGEXP_REPLACE(${fieldName}, r'[^0-9]', '')) - 4,
+              4
+            )
+          )
+        `;
+      
+      default:
+        // Log unknown type but don't block operation
+        errorLogger.logError(
+          'semantic_types',
+          errorLogger.ERROR_TYPES.STANDARDIZATION,
+          {
+            semanticType,
+            fieldName,
+            message: 'Unknown semantic type for standardization',
+            sourceFile: 'semantic_types.js'
+          },
+          errorLogger.SEVERITY.INFO
+        );
+        
+        // For unknown types, just return the field as is
+        return fieldName;
+    }
+  } catch (error) {
+    // Log the error
+    errorLogger.logError(
+      'semantic_types',
+      errorLogger.ERROR_TYPES.STANDARDIZATION,
+      {
+        semanticType,
+        fieldName,
+        error: error.message,
+        sourceFile: 'semantic_types.js'
+      },
+      errorLogger.SEVERITY.ERROR
+    );
+    
+    // Return a safe fallback that won't break the pipeline
+    return fieldName;
+  }
 }
 
-// Export all functions and constants
+/**
+ * Analyzes a list of field names and returns their detected semantic types
+ * 
+ * @param {Array<string>} fieldNames - List of field names to analyze
+ * @returns {Object} Mapping of field names to their semantic types
+ */
+function analyzeFields(fieldNames) {
+  const results = {};
+  
+  for (const fieldName of fieldNames) {
+    const detectedType = detectSemanticType(fieldName);
+    if (detectedType) {
+      results[fieldName] = detectedType;
+    }
+  }
+  
+  return results;
+}
+
+/**
+ * Generates a SQL query to infer semantic types from a table
+ * 
+ * @param {string} projectId - BigQuery project ID
+ * @param {string} datasetId - BigQuery dataset ID
+ * @param {string} tableId - BigQuery table ID
+ * @returns {string} SQL query that returns semantic type mappings
+ */
+function generateSemanticTypeMappingSql(projectId, datasetId, tableId) {
+  const patternCases = [];
+  
+  // Build the pattern matching CASE statement for each semantic type
+  Object.entries(SEMANTIC_TYPES).forEach(([typeKey, typeObj]) => {
+    typeObj.patterns.forEach(pattern => {
+      // Convert regex pattern to string and remove the regex delimiters and flags
+      const patternStr = pattern.toString().replace(/^\/|\/i$/g, '');
+      patternCases.push(`WHEN REGEXP_CONTAINS(LOWER(column_name), r'${patternStr}') THEN '${typeObj.name}'`);
+    });
+  });
+
+  return `
+    WITH column_info AS (
+      SELECT 
+        column_name,
+        data_type
+      FROM 
+        \`${projectId}.${datasetId}\`.INFORMATION_SCHEMA.COLUMNS
+      WHERE 
+        table_name = '${tableId}'
+    )
+    
+    SELECT
+      column_name,
+      data_type,
+      CASE
+        ${patternCases.join('\n        ')}
+        ELSE NULL
+      END AS semantic_type
+    FROM column_info
+    ORDER BY column_name
+  `;
+}
+
+// US state codes for validation
+const US_STATE_CODES = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+  'DC', 'PR', 'VI', 'AS', 'GU', 'MP'
+];
+
+// Export both the semantic types and utility functions
 module.exports = {
-  semanticTypeMap,
-  getSemanticType,
-  isSemanticType,
-  validateValue,
-  getPotentialFieldNames
+  SEMANTIC_TYPES,
+  detectSemanticType,
+  validateBySemanticType,
+  getStandardFieldName,
+  getStandardizationExpression,
+  analyzeFields,
+  generateSemanticTypeMappingSql
 };

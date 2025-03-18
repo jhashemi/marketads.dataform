@@ -6,10 +6,31 @@
  * configuration object, following the Separation of Concerns principle.
  */
 
+const { projectConfig } = require("dataform");
 const matchingConfig = require('./matching');
 const blockingConfig = require('./blocking');
 const environmentConfig = require('./environment');
 const { ConfigurationError } = require('../core/errors');
+
+/**
+ * Gets configuration value from project variables with default fallback
+ * @param {string} key - The configuration key
+ * @param {*} defaultValue - Default value if not found in project variables
+ * @returns {*} - Configuration value
+ */
+function getConfigValue(key, defaultValue) {
+  const prefix = "config_";
+  return projectConfig.vars && projectConfig.vars[prefix + key] !== undefined ? 
+    projectConfig.vars[prefix + key] : defaultValue;
+}
+
+/**
+ * Gets the current environment name
+ * @returns {string} - Current environment name
+ */
+function getCurrentEnvironment() {
+  return projectConfig.vars?.environment || process.env.DATAFORM_ENVIRONMENT || "development";
+}
 
 /**
  * Creates a complete configuration object with all components
@@ -21,10 +42,28 @@ const { ConfigurationError } = require('../core/errors');
  */
 function createConfig(options = {}) {
   try {
+    // Extract user options from project variables when available
+    const projectVars = projectConfig.vars || {};
+    
     const config = {
-      matching: matchingConfig.createMatchingConfig(options.matching || {}),
-      blocking: blockingConfig.createBlockingConfig(options.blocking || {}),
-      environment: environmentConfig.createEnvironmentConfig(options.environment || {})
+      matching: matchingConfig.createMatchingConfig({
+        fieldWeights: projectVars.field_weights,
+        confidenceThresholds: projectVars.confidence_thresholds,
+        similarityThresholds: projectVars.similarity_thresholds,
+        metricsTargets: projectVars.metrics_targets,
+        ...options.matching
+      }),
+      
+      blocking: blockingConfig.createBlockingConfig({
+        blockingStrategies: projectVars.blocking_strategies,
+        blockingParams: projectVars.blocking_params,
+        ...options.blocking
+      }),
+      
+      environment: environmentConfig.createEnvironmentConfig({
+        environmentSettings: projectVars.environment_settings,
+        ...options.environment
+      })
     };
     
     return config;
@@ -45,6 +84,8 @@ const DEFAULT_CONFIG = createConfig();
 module.exports = {
   createConfig,
   DEFAULT_CONFIG,
+  getConfigValue,
+  getCurrentEnvironment,
   
   // Re-export sub-module functions for convenience
   createMatchingConfig: matchingConfig.createMatchingConfig,
@@ -52,8 +93,7 @@ module.exports = {
   createEnvironmentConfig: environmentConfig.createEnvironmentConfig,
   
   // Environment helpers
-  getCurrentEnvironment: environmentConfig.getCurrentEnvironment,
-  isProduction: environmentConfig.isProduction,
-  isDevelopment: environmentConfig.isDevelopment,
-  isTesting: environmentConfig.isTesting
+  isProduction: () => getCurrentEnvironment() === 'production',
+  isDevelopment: () => getCurrentEnvironment() === 'development',
+  isTesting: () => getCurrentEnvironment() === 'testing'
 }; 
