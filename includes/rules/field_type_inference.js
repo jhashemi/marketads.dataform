@@ -56,8 +56,8 @@ const semanticTypeMap = {
  */
 const validationPatterns = {
   email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-  phoneNumber: /^\+?[0-9]{10,15}$/,
-  zipCode: /^[0-9]{5}(-[0-9]{4})?$/,
+  phoneNumber: /^\+?[0-9]{7,15}$|^\+?[0-9]{3}[-. ][0-9]{3}[-. ][0-9]{4}$/,
+  zipCode: /^[0-9]{5}(-[0-9]{4})?$|^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$/,
   dateOfBirth: /^(19|20)\d\d[- /.](0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])$/,
   ssn: /^[0-9]{3}-?[0-9]{2}-?[0-9]{4}$/
 };
@@ -123,7 +123,7 @@ function inferSemanticType(field, samples) {
       };
     }
   }
-  
+
   // Then try to infer from content patterns
   const contentBasedType = inferTypeFromContent(samples, field.type);
   if (contentBasedType) {
@@ -133,7 +133,7 @@ function inferSemanticType(field, samples) {
       source: 'content'
     };
   }
-  
+
   // If all else fails, use the generic SQL type
   return {
     type: mapSqlTypeToSemanticType(field.type),
@@ -426,32 +426,44 @@ function getRecommendedAlgorithms() {
 /**
  * Generates a SQL query to infer field types for a given table.
  * This is a simplified example and may need adjustments for production use.
- * @param {string} tableId - The fully qualified table ID (project.dataset.table).
+ * @param {string} project_id - The BigQuery project ID.
+ * @param {string} dataset_id - The BigQuery dataset ID.
+ * @param {string} table_id - The ID of the table to analyze.
  * @returns {string} - The SQL query for field type inference.
+ * @throws {TypeError} - If input types are invalid.
  */
-function generateInferenceSql(tableId) {
-
+function generateInferenceSql(project_id, dataset_id, table_id) {
+    if (typeof project_id !== 'string' || !project_id) {
+        throw new TypeError("Expected a non-empty string for project_id");
+    }
+    if (typeof dataset_id !== 'string' || !dataset_id) {
+        throw new TypeError("Expected a non-empty string for dataset_id");
+    }
+    if (typeof table_id !== 'string' || !table_id) {
+        throw new TypeError("Expected a non-empty string for table_id");
+    }
   return `
     WITH source_data AS (
-      SELECT * FROM \`${tableId}\`
+      SELECT * FROM \`${project_id}.${dataset_id}.${table_id}\`
     ),
     field_types AS (
       SELECT
-        '${tableId}' as table_name,
+        '${table_id}' as table_name,
         column_name as field_name,
         data_type as declared_type,
         CASE
-          WHEN REGEXP_CONTAINS(CAST(${tableId}.email as STRING), r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$') THEN 'email'
-          WHEN REGEXP_CONTAINS(CAST(${tableId}.phone as STRING), r'^\\+?[0-9]{7,15}$|^\\+?[0-9]{3}[-. ][0-9]{3}[-. ][0-9]{4}$') THEN 'phoneNumber'
-          WHEN REGEXP_CONTAINS(CAST(${tableId}.first_name as STRING), r'^[A-Z][a-z]+$') THEN 'firstName'
-          WHEN REGEXP_CONTAINS(CAST(${tableId}.last_name as STRING), r'^[A-Z][a-z]+$') THEN 'lastName'
-          WHEN REGEXP_CONTAINS(CAST(${tableId}.address as STRING), r'^\\\\d+\\\\s[A-Za-z]+\\\\s[A-Za-z]+') THEN 'address'
-          WHEN REGEXP_CONTAINS(CAST(${tableId}.city as STRING), r'^[A-Za-z]+(?:[\\s-][A-Za-z]+)*$') THEN 'city'
-          WHEN REGEXP_CONTAINS(CAST(${tableId}.state as STRING), r'^[A-Z]{2}$') THEN 'state'
-          WHEN REGEXP_CONTAINS(CAST(${tableId}.postal_code as STRING), r'^[0-9]{5}(-[0-9]{4})?$|^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$') THEN 'postalCode'
+          WHEN REGEXP_CONTAINS(CAST(email as STRING), r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$') THEN 'email'
+          WHEN REGEXP_CONTAINS(CAST(phone as STRING), r'^\\+?[0-9]{7,15}$|^\\+?[0-9]{3}[-. ][0-9]{3}[-. ][0-9]{4}$') THEN 'phoneNumber'
+          WHEN REGEXP_CONTAINS(CAST(first_name as STRING), r'^[A-Z][a-z]+$') THEN 'firstName'
+          WHEN REGEXP_CONTAINS(CAST(last_name as STRING), r'^[A-Z][a-z]+$') THEN 'lastName'
+          WHEN REGEXP_CONTAINS(CAST(address as STRING), r'^\\\\d+\\\\s[A-Za-z]+\\\\s[A-Za-z]+') THEN 'address'
+          WHEN REGEXP_CONTAINS(CAST(city as STRING), r'^[A-Za-z]+(?:[\\s-][A-Za-z]+)*$') THEN 'city'
+          WHEN REGEXP_CONTAINS(CAST(state as STRING), r'^[A-Z]{2}$') THEN 'state'
+          WHEN REGEXP_CONTAINS(CAST(postal_code as STRING), r'^[0-9]{5}(-[0-9]{4})?$|^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$') THEN 'postalCode'
           ELSE data_type
         END as inferred_type
-      FROM \`${tableId}.INFORMATION_SCHEMA.COLUMNS\`
+      FROM \`${project_id}.${dataset_id}.INFORMATION_SCHEMA.COLUMNS\`
+      WHERE table_name = '${table_id}'
     )
     SELECT * FROM field_types;
   `;

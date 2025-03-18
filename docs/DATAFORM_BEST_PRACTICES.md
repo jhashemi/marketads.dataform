@@ -42,205 +42,122 @@ The `dataform.json` file should include:
 
 ## JavaScript Includes
 
-### Best Practices
-
-1. **Modular Design**: Create small, focused modules that do one thing well.
-2. **Proper Exports**: Always use `module.exports` to export functions and objects:
-
-```javascript
-function calculateSimilarity(a, b) {
-  // Implementation
-}
-
-module.exports = {
-  calculateSimilarity
-};
-```
-
-3. **Self-Contained**: Each include should be self-contained or explicitly require its dependencies.
-4. **Documentation**: Add JSDoc comments to all functions and parameters.
-5. **Error Handling**: Handle edge cases and provide meaningful error messages.
-
-### Including in SQLX Files
-
-1. **Top-Level Includes**: Reference using filename without extension:
-
-```
-config { type: "table" }
-SELECT ${utils.formatDate("date_column")} AS formatted_date
-FROM ${ref("source_table")}
-```
-
-2. **Nested Includes**: Use JavaScript `require()` function:
-
-```
-config { type: "table" }
-js {
-  const { formatDate } = require("includes/utils/date_formatting");
-}
-SELECT ${formatDate("date_column")} AS formatted_date
-FROM ${ref("source_table")}
-```
+- Organize reusable JavaScript functions and modules in the `includes/` directory.
+- Structure includes into subdirectories based on functionality (e.g., `core/`, `matching/`, `utils/`).
+- Document each function and module with JSDoc comments.
+- Write unit tests for JavaScript includes in the `tests/includes/` directory.
 
 ## SQLX Definitions
 
-### Table Configuration
+### General SQL Best Practices
 
-```
-config {
-  type: "table", // table, view, incremental, or assertion
-  name: "table_name", // Optional - defaults to filename
-  description: "Description of the table",
-  columns: {
-    column1: "Description of column1",
-    column2: "Description of column2"
-  },
-  tags: ["tag1", "tag2"],
-  dependencies: ["other_table"], // Optional - use ref() is preferred
-  assertions: {
-    uniqueKey: ["id"],
-    nonNull: ["required_field"]
+- Follow a consistent code style for SQL (e.g., uppercase keywords, consistent indentation).
+- Break down complex SQL queries into smaller, more manageable chunks using CTEs (Common Table Expressions).
+- Use comments liberally to explain complex logic, transformations, and assumptions within SQL queries.
+- Avoid excessively long lines of SQL code. Break lines for readability, especially for long `SELECT` lists or `WHERE` clauses.
+- Use consistent indentation (e.g., 2 spaces) for SQL code blocks within JavaScript templates.
+
+### Parameterization
+
+- Use variables to parameterize dataset and table names in your SQLX definitions. This makes your Dataform project more portable and easier to configure for different environments (e.g., development, testing, production).
+
+- **Define variables in `config` blocks within SQLX files:**
+    - Use the `vars` configuration option within the `config {}` block of your SQLX files to define variables.
+    - This is useful for project-specific configurations that may vary between different Dataform projects or environments.
+
+- **Example of defining variables in SQLX config:**
+```javascript
+config: {
+  type: "table",
+  name: "my_parameterized_table",
+  description: "Example table using parameterized dataset and table names",
+  vars: {
+    project_id: "your_project_id", // Replace with your GCP project ID
+    dataset_id: "your_dataset_id",  // Replace with your BigQuery dataset ID
+    table_name: "your_table_name"   // Replace with your table name
   }
 }
 ```
 
-### Using JavaScript in SQLX
+- **Reference variables in your SQL code:**
+    - Reference variables in your SQL code using the `${dataform.projectConfig.vars.variableName}` syntax.
+    - This allows you to dynamically insert variable values into your SQL queries at runtime.
 
-```
-config { type: "table" }
-
-js {
-  // JavaScript code here
-  const tableName = "source_data";
-  function buildQuery(table) {
-    return `SELECT * FROM ${table}`;
-  }
-}
-
--- SQL with JS interpolation
-${buildQuery(tableName)}
+- **Example of referencing variables in SQL code:**
+```sql
+SELECT *
+FROM `${dataform.projectConfig.vars.project_id}.${dataform.projectConfig.vars.dataset_id}.${dataform.projectConfig.vars.table_name}`
+WHERE date_partition = current_date()
 ```
 
-## Testing
-
-### Assertion Tests
-
-Create assertions to validate data quality:
-
-```
-config {
-  type: "assertion",
-  name: "valid_customer_email",
-  description: "Ensures all customer emails are valid",
-  tags: ["test", "data_quality"]
-}
-
--- This query should return 0 rows if the test passes
-SELECT customer_id, email 
-FROM ${ref("customers")}
-WHERE email IS NOT NULL AND 
-      NOT REGEXP_CONTAINS(email, r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
-```
-
-### Unit Testing JavaScript Includes
-
-Create unit tests for JavaScript functions in the `tests/` directory:
+- For example, to parameterize table names in `definitions/analysis/schema_analysis.sqlx` and `definitions/analysis/field_type_inference.sqlx`, define `sourceTableA` and `sourceTableB` vars in the config:
 
 ```javascript
-// tests/includes/matching_functions_test.js
-const assert = require("assert");
-const matchingFunctions = require("../../includes/matching_functions");
-
-describe("matchingFunctions", () => {
-  describe("calculateNameSimilarity", () => {
-    it("should return high similarity for similar names", () => {
-      const result = matchingFunctions.calculateNameSimilarity("John Smith", "Jon Smith");
-      assert(result > 0.8, `Expected similarity > 0.8 but got ${result}`);
-    });
-  });
-});
-```
-
-Run tests using:
-
-```
-npm test
-```
-
-### Integration/SQL Testing
-
-Create SQL assertions that validate your SQL logic:
-
-```
-config {
-  type: "assertion",
-  name: "test_matching_logic",
-  description: "Tests the customer matching logic",
-  tags: ["test", "integration"]
+config: {
+  type: "table",
+  description: "Analyzes source schemas and stores analysis results",
+  vars: {
+    project_id: "your_project_id",
+    dataset_id: "your_dataset_id",
+    sourceTableA: "your_dataset.source_customers_a",
+    sourceTableB: "your_dataset.source_customers_b" 
+  }
 }
-
-WITH test_data AS (
-  SELECT 
-    1 AS customer_id,
-    "John" AS first_name,
-    "Smith" AS last_name,
-    "john.smith@example.com" AS email
-  UNION ALL
-  SELECT 
-    2 AS customer_id,
-    "Jon" AS first_name,
-    "Smith" AS last_name,
-    "jon.smith@example.com" AS email
-)
-
--- This should return 0 rows if all matches are correctly found
-SELECT *
-FROM test_data t
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM ${ref("customer_matches")} m
-  WHERE m.source_id = t.customer_id
-  AND m.match_confidence > 0.8
-)
 ```
 
-## Running and Scheduling
+- Then, in the JavaScript section of the SQLX file, reference these variables when calling functions that generate SQL queries:
 
-### CLI Commands
-
-```bash
-# Compile the project
-dataform compile
-
-# Run a specific action
-dataform run --actions "schema.table_name"
-
-# Run all tables with a specific tag
-dataform run --tags "tag_name"
-
-# Run test assertions
-dataform run --tags "test"
-
-# Create a schedule
-dataform create-schedule --cron "0 2 * * *" --actions "schema.final_output"
+```javascript
+js`WITH schema_analysis AS (
+  ${schemaAnalyzer.generateAnalysisSql(dataform.projectConfig.vars.project_id, dataform.projectConfig.vars.dataset_id, sourceTables)}
+),
+field_type_inference AS (
+  ${fieldTypeInference.generateInferenceSql(dataform.projectConfig.vars.project_id, dataform.projectConfig.vars.dataset_id, dataform.projectConfig.vars.table_id)}
+)
+-- ... rest of your query
+`
 ```
 
-## Performance Considerations
+### Performance and Optimization
 
-1. **Partition Tables**: Use partitioning for large tables.
-2. **Clustering**: Add clustering keys for frequently filtered columns.
-3. **Incremental Tables**: Use incremental tables for append-only data.
-4. **Cost Control**: Limit data processed by using partitioning and WHERE clauses.
+- Optimize SQL queries for performance, considering aspects like filtering, indexing, and partitioning.
+- Use `LIMIT` clauses when sampling data or for development/testing queries to avoid processing large datasets.
+- Be mindful of BigQuery cost implications and strive to write efficient queries.
+- Consider using Dataform's built-in features for performance optimization, such as partitioning and clustering.
 
-## Debugging Tips
+### Error Handling and Resilience
 
-1. **Preview SQL**: Use `dataform compile` to view the generated SQL.
-2. **Test Small**: Create small test datasets for faster iteration.
-3. **Assertions**: Create assertions to validate your assumptions.
-4. **Logging**: Add comments and logs to track execution flow.
+- Implement error handling in JavaScript code to gracefully manage potential issues (e.g., database connection errors, invalid input).
+- Use `try-catch` blocks in JavaScript code to handle exceptions and prevent job failures.
+- Log errors and warnings appropriately to aid in debugging and monitoring.
+- Design SQL queries to be resilient to data quality issues (e.g., handle NULL values gracefully).
 
-## Resources
+### Security Best Practices
 
-- [Dataform Documentation](https://cloud.google.com/dataform/docs)
-- [BigQuery SQL Reference](https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-and-operators)
-- [Dataform GitHub Repository](https://github.com/dataform-co/dataform) 
+- Avoid hardcoding sensitive information (credentials, API keys) directly in SQL or JavaScript code.
+- Use Dataform's secret management capabilities or environment variables to handle sensitive configuration.
+- Follow BigQuery security best practices, such as least privilege access control.
+- Regularly review and update dependencies to address potential security vulnerabilities.
+
+### Documentation and Comments
+
+- Add clear and concise comments to SQL queries to explain the logic and purpose of different sections.
+- Document Dataform variables, their purpose, and expected values in README or documentation files.
+- Provide descriptions for all Dataform tables, views, and operations using the `config {}` block.
+- Document any assumptions, dependencies, or limitations of SQL queries and Dataform workflows.
+
+### Testing and Validation
+
+- Implement unit tests in JavaScript to validate the logic of custom functions and modules.
+- Use Dataform's built-in testing framework to create data quality tests for SQL definitions.
+- Test data transformations and aggregations to ensure correctness.
+- Regularly run tests to catch regressions and ensure the reliability of the Dataform project.
+
+### Code Organization and Modularity
+
+- Organize Dataform project files logically into directories (e.g., definitions, includes, docs, tests).
+- Break down complex Dataform workflows into smaller, modular components (e.g., separate SQLX files for different transformations).
+- Reuse common JavaScript functions and SQL snippets using includes and Dataform modules.
+- Follow the DRY (Don't Repeat Yourself) principle to avoid code duplication and improve maintainability.
+
+By adhering to these standards, Dataform projects can be developed in a robust, maintainable, and scalable manner, ensuring data quality and efficient workflows.

@@ -36,8 +36,10 @@ Analyzes the structure of source and reference tables to identify:
 
 ```javascript
 const analysis = await schemaAnalyzer.analyzeSchema(
-  'source_table',
-  'reference_table'
+  'your_project.your_dataset.source_table', // parameterized table id
+  'your_project.your_dataset.reference_table', // parameterized table id
+  'your_project', // project id
+  'your_dataset'  // dataset id
 );
 ```
 

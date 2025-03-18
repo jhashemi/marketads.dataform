@@ -21,128 +21,37 @@ graph TD
 
 ## Implementation Examples
 
-### 1. Rule Framework Integration in SQLX
-
-```js
-// In your customer_matching.sqlx file
-config {
-  type: "table",
-  dependencies: ["source_customers_a", "source_customers_b"]
-}
-
-// Import the rule framework
-const { intelligentRuleSelector } = require("../includes/rule_engine");
-const { schemaAnalyzer } = require("../includes/schema_analyzer");
-
-// JavaScript section to analyze schemas and generate rules
-const sourceTableA = "source_customers_a";
-const sourceTableB = "source_customers_b";
-
-// Initialize the schema analyzer with the source tables
-const schemaInfo = schemaAnalyzer.analyzeSchemas([sourceTableA, sourceTableB]);
-
-// Generate rule recommendations based on schema analysis and matching goal
-const ruleRecommendation = intelligentRuleSelector.recommendRules(
-  schemaInfo,
-  "Find high quality matches with good precision"
-);
-
-// Use the recommended rules in your SQL
-js`SELECT ${ruleRecommendation.generateSql({
-  sourceTableA: sourceTableA,
-  sourceTableB: sourceTableB,
-  outputFormat: "pairs"
-})}`
-```
-
-### 2. Semantic Analyzer Integration in SQLX
-
-```js
-// In your field_mapping.sqlx file
-config {
-  type: "table",
-  dependencies: ["source_customer_data"]
-}
-
-// Import the semantic analyzer
-const { fieldTypeInference } = require("../includes/semantic_types");
-
-// Analyze a table to infer semantic field types
-const sourceTable = "source_customer_data";
-const fieldTypes = fieldTypeInference.inferFieldTypes(sourceTable);
-
-// Generate a field mapping based on the inferred types
-js`SELECT
-  ${fieldTypes.generateFieldMappingSql({
-    table: sourceTable,
-    includeConfidence: true
-  })}`
-```
-
-### 3. Schema Analyzer for Blocking Strategy Optimization
-
-```js
-// In your blocking_optimization.sqlx file
-config {
-  type: "table",
-  dependencies: ["source_customers_a", "source_customers_b"]
-}
-
-// Import the schema analyzer and rule optimizer
-const { schemaAnalyzer } = require("../includes/schema_analyzer");
-const { ruleOptimizer } = require("../includes/rule_optimizer");
-
-// Analyze schemas for blocking optimization
-const schemaInfo = schemaAnalyzer.analyzeSchemas([
-  "source_customers_a", 
-  "source_customers_b"
-]);
-
-// Generate optimized blocking strategy
-const blockingStrategy = ruleOptimizer.recommendBlockingStrategy(
-  schemaInfo,
-  {
-    performance: "HIGH",
-    recall: 0.95
-  }
-);
-
-// Use the blocking strategy in your matching query
-js`SELECT ${blockingStrategy.generateSql({
-  sourceTableA: "source_customers_a",
-  sourceTableB: "source_customers_b"
-})}`
-```
-
-## Example Implementation: Complete Dataform Workflow
-
-Below is a complete implementation example showcasing how to use the rule framework, semantic analyzer, and schema analyzer in a full Dataform pipeline.
-
-### 1. Schema Analysis Phase
+### 1. Schema Analysis Phase (Parameterized)
 
 ```js
 // definitions/analysis/schema_analysis.sqlx
 config {
   type: "table",
-  description: "Analyzes source schemas and stores analysis results"
+  description: "Analyzes source schemas and stores analysis results",
+  vars: {
+    project_id: "your_project_id", // Replace with your project ID
+    dataset_id: "your_dataset_id",  // Replace with your dataset ID
+    sourceTableA: "your_dataset.source_customers_a", // Replace with your source table A
+    sourceTableB: "your_dataset.source_customers_b"  // Replace with your source table B
+  }
 }
 
 // Import needed modules
-const { schemaAnalyzer } = require("../../includes/schema_analyzer");
-const { fieldTypeInference } = require("../../includes/semantic_types");
+const { schemaAnalyzer } = require("../../includes/rules/schema_analyzer");
+const { fieldTypeInference } = require("../../includes/rules/field_type_inference");
 
-// Define source tables to analyze
+// Define source tables to analyze (now parameterized via vars)
 const sourceTables = [
-  "source_customers_a",
-  "source_customers_b"
+  dataform.projectConfig.vars.sourceTableA,
+  dataform.projectConfig.vars.sourceTableB
 ];
 
-// Generate analysis query
+// Generate analysis query - project_id and dataset_id are now parameters
 js`WITH schema_analysis AS (
-  ${schemaAnalyzer.generateAnalysisSql(sourceTables)}
+  ${schemaAnalyzer.generateAnalysisSql(dataform.projectConfig.vars.project_id, dataform.projectConfig.vars.dataset_id, sourceTables)}
 ),
 field_type_inference AS (
-  ${fieldTypeInference.generateInferenceSql(sourceTables)}
+  ${fieldTypeInference.generateInferenceSql(dataform.projectConfig.vars.project_id, dataform.projectConfig.vars.dataset_id, dataform.projectConfig.vars.table_id)}
 )
 
 -- Combine the analysis results
@@ -173,24 +82,24 @@ config {
 }
 
 // Import rule framework
-const { intelligentRuleSelector } = require("../../includes/rule_engine");
+const { intelligentRuleSelector } = require("../../includes/rules/intelligent_rule_selector");
 
 // Define matching goals
 const matchingGoals = [
   {
     name: "high_precision",
     description: "Find only high-confidence matches",
-    config: { precision: "HIGH", recall: "MEDIUM" }
+    config: { precision: 0.9, recall: 0.5 }
   },
   {
     name: "high_recall",
     description: "Find as many potential matches as possible",
-    config: { precision: "MEDIUM", recall: "HIGH" }
+    config: { precision: 0.5, recall: 0.9 }
   },
   {
     name: "balanced",
     description: "Balance precision and recall",
-    config: { precision: "MEDIUM", recall: "MEDIUM" }
+    config: { precision: 0.7, recall: 0.7 }
   }
 ];
 
@@ -242,12 +151,12 @@ js`WITH recommended_rules AS (
   LIMIT 1
 )
 
+-- Apply incremental matching logic
 ${matchEngine.generateMatchingSql({
   sourceTableA: "source_customers_a",
   sourceTableB: "source_customers_b",
   rulesConfig: "recommended_rules.rule_config"
-})}
-`
+})}`
 ```
 
 ## Integration with Dataform Operations
@@ -286,8 +195,7 @@ ${matchEngine.generateIncrementalMatchingSql({
     field: "updated_at",
     condition: when(incremental(), `source_updated_at > (SELECT MAX(source_updated_at) FROM ${self()})`)
   }
-})}
-`
+})}`
 ```
 
 ### Performance Monitoring with Analysis Framework
@@ -369,27 +277,14 @@ const { fieldTypeInference } = require("../includes/semantic_types");
 
 // Infer field types for a table
 const tableToAnalyze = "source_customers_a";
-const inferredTypes = fieldTypeInference.inferFieldTypes(tableToAnalyze);
+const inferredTypes = fieldTypeInference.inferFieldTypes(sourceTable);
 
-// Output example field type inference as a comment
-var inferenceOutput = `
-/*
-Field Type Inference Results for ${tableToAnalyze}:
-${JSON.stringify(inferredTypes, null, 2)}
-
-Inferred Semantic Types:
-${Object.entries(inferredTypes.fields).map(([field, info]) => 
-  `- ${field}: ${info.semanticType} (confidence: ${info.confidence})`
-).join('\n')}
-*/
-`;
-
-// Execute a simple SQL query with the inference as a comment
-js`
-${inferenceOutput}
-
-SELECT 1 as example
-`
+// Generate a field mapping based on the inferred types
+js`SELECT
+  ${fieldTypes.generateFieldMappingSql({
+    table: sourceTable,
+    includeConfidence: true
+  })}`
 ```
 
 ## Implementation of the Rule Framework
@@ -435,9 +330,8 @@ ${ruleRecommendation.generateSql({
   sourceTableA: sourceTableA,
   sourceTableB: sourceTableB,
   limit: 10
-})}
-*/
-`;
+})}`
+*/;
 
 // Execute a simple SQL query with the recommendation as a comment
 js`

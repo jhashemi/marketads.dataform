@@ -6,145 +6,73 @@
  * of source and reference tables to help determine the most effective matching rules.
  */
 
-// Simulated database connector - in a real implementation, this would connect to the actual database
-const dbConnector = {
-  /**
-   * Get schema information for a table
-   * @param {string} tableId - The ID of the table to analyze
-   * @returns {Promise<Object>} - The table schema
-   */
-  getTableSchema: async (tableId) => {
-    console.log(`Getting schema for table: ${tableId}`);
-    // In a real implementation, this would query the database metadata
-    // For now, we'll return a simulated schema
-    return {
-      fields: [
-        { name: 'id', type: 'int64' },
-        { name: 'first_name', type: 'string' },
-        { name: 'last_name', type: 'string' },
-        { name: 'email', type: 'string' },
-        { name: 'phone', type: 'string' },
-        { name: 'date_of_birth', type: 'date' },
-        { name: 'address', type: 'string' },
-        { name: 'city', type: 'string' },
-        { name: 'postal_code', type: 'string' }
-      ]
-    };
-  },
-  
-  /**
-   * Get row count for a table
-   * @param {string} tableId - The ID of the table
-   * @returns {Promise<number>} - The number of rows in the table
-   */
-  getRowCount: async (tableId) => {
-    console.log(`Getting row count for table: ${tableId}`);
-    // In a real implementation, this would query the database
-    // For now, we'll return a simulated count
-    return Math.floor(Math.random() * 10000) + 1000;
-  },
-  
-  /**
-   * Get sample data from a table
-   * @param {string} tableId - The ID of the table
-   * @param {number} sampleSize - The number of rows to sample
-   * @returns {Promise<Array>} - Sample data from the table
-   */
-  getSampleData: async (tableId, sampleSize = 100) => {
-    console.log(`Getting ${sampleSize} sample rows from table: ${tableId}`);
-    // In a real implementation, this would query the database
-    // For now, we'll return simulated data
-    return Array(sampleSize).fill().map(() => ({
-      id: Math.floor(Math.random() * 10000),
-      first_name: ['John', 'Jane', 'Michael', 'Emily', 'David'][Math.floor(Math.random() * 5)],
-      last_name: ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones'][Math.floor(Math.random() * 5)],
-      email: `example${Math.floor(Math.random() * 100)}@example.com`,
-      phone: `555-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
-      date_of_birth: new Date(1970 + Math.floor(Math.random() * 40), Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1),
-      address: `${Math.floor(Math.random() * 1000)} Main St`,
-      city: ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix'][Math.floor(Math.random() * 5)],
-      postal_code: Math.floor(Math.random() * 90000 + 10000).toString()
-    }));
-  },
-  
-  /**
-   * Get field statistics for a table
-   * @param {string} tableId - The ID of the table
-   * @param {Array} fields - The fields to analyze
-   * @returns {Promise<Object>} - Statistics for each field
-   */
-  getFieldStats: async (tableId, fields) => {
-    console.log(`Getting field statistics for table: ${tableId}`);
-    // In a real implementation, this would query the database
-    // For now, we'll return simulated statistics
-    const stats = {};
-    fields.forEach(field => {
-      stats[field.name] = {
-        uniqueRatio: Math.random() * 0.9 + 0.1, // Between 0.1 and 1.0
-        nullRatio: Math.random() * 0.1, // Between 0 and 0.1
-        avgLength: field.type === 'string' ? Math.floor(Math.random() * 20) + 5 : null,
-        minValue: field.type === 'int64' ? 0 : null,
-        maxValue: field.type === 'int64' ? 10000 : null
-      };
-    });
-    return stats;
-  }
-};
-
 /**
  * Generates a SQL query to analyze the schema of the specified tables.
- * @param {string[]} tableIds - The IDs of the tables to analyze, including project and dataset.
+ * @param {string} project_id - The BigQuery project ID.
+ * @param {string} dataset_id - The BigQuery dataset ID.
+ * @param {string[]} tableIds - The IDs of the tables to analyze.
  * @returns {string} - The SQL query for schema analysis.
+ * @throws {Error} - If there is an error generating the SQL query.
+ * @throws {TypeError} - If input types are invalid
  */
-function generateAnalysisSql(tableIds) {
-  // This is a simplified example. In a real implementation, you would
-  // dynamically generate SQL based on the database type (BigQuery in this case).
-  // You would also likely use INFORMATION_SCHEMA views.
+function generateAnalysisSql(project_id, dataset_id, tableIds) {
+  if (typeof project_id !== 'string' || !project_id) {
+    throw new TypeError("Expected a non-empty string for project_id");
+  }
+  if (typeof dataset_id !== 'string' || !dataset_id) {
+     throw new TypeError("Expected a non-empty string for dataset_id");
+  }
+    if (!Array.isArray(tableIds) || tableIds.length === 0 || !tableIds.every(id => typeof id === 'string' && id)) {
+    throw new TypeError("Expected a non-empty array of strings for tableIds");
+  }
+    
+  try {
+    const queries = tableIds.map(tableId => {
+      return `SELECT
+        '${tableId}' as table_name,
+        column_name as field_name,
+        data_type as field_type
+      FROM \`${project_id}.${dataset_id}.INFORMATION_SCHEMA.COLUMNS\`
+      WHERE table_name = '${tableId}'`;
+    });
 
-  const queries = tableIds.map(tableId => {
-    return `SELECT\n      '${tableId}' as table_name,\n      column_name as field_name,\n      data_type as field_type\n    FROM \`${tableId}.INFORMATION_SCHEMA.COLUMNS\``;
-  });
-
-  return queries.join('\nUNION ALL\n');
+    return queries.join('\\nUNION ALL\\n');
+  } catch (error) {
+    console.error("Error generating analysis SQL:", error);
+    throw new Error(`Failed to generate analysis SQL: ${error.message}`);
+  }
 }
 
+/**
+ * Analyzes the schema of two tables to identify common fields and gather statistics.
+ * @param {string} sourceTableId The ID of the source table.
+ * @param {string} referenceTableId The ID of the reference table.
+ * @param {string} projectId The ID of the BigQuery project.
+ * @param {string} datasetId The ID of the BigQuery dataset.
+ * @returns {Promise<Object>} An object containing schema analysis results.
+ * @throws {TypeError} - if the inputs are invalid
+ */
+async function analyzeSchema(sourceTableId, referenceTableId, projectId, datasetId) {
+    if (typeof sourceTableId !== 'string' || !sourceTableId) {
+        throw new TypeError("Expected a non-empty string for sourceTableId");
+    }
+    if (typeof referenceTableId !== 'string' || !referenceTableId) {
+        throw new TypeError("Expected a non-empty string for referenceTableId");
+    }
+    if (typeof projectId !== 'string' || !projectId) {
+        throw new TypeError("Expected a non-empty string for projectId");
+    }
+    if (typeof datasetId !== 'string' || !datasetId) {
+        throw new TypeError("Expected a non-empty string for datasetId");
+    }
+  console.log(`Analyzing schema for ${sourceTableId} → ${referenceTableId} in ${projectId}.${datasetId}`);
 
-async function analyzeSchema(sourceTableId, referenceTableId) {
-  console.log(`Analyzing schema for ${sourceTableId} → ${referenceTableId}`);
-  
-  // Get schemas for both tables
-  const sourceSchema = await dbConnector.getTableSchema(sourceTableId);
-  const referenceSchema = await dbConnector.getTableSchema(referenceTableId);
-  
-  // Get row counts
-  const sourceRowCount = await dbConnector.getRowCount(sourceTableId);
-  const referenceRowCount = await dbConnector.getRowCount(referenceTableId);
-  
-  // Identify common fields (by name and type)
-  const commonFields = findCommonFields(sourceSchema, referenceSchema);
-  
-  // Get field statistics for common fields
-  const fieldStats = await getFieldStatistics(sourceTableId, referenceTableId, commonFields);
-  
-  // Calculate schema similarity score
-  const schemaSimilarity = calculateSchemaSimilarity(sourceSchema, referenceSchema);
-  
-  // Identify potential blocking fields
-  const potentialBlockingFields = identifyBlockingFields(commonFields, fieldStats);
-  
-  // Identify potential matching fields
-  const potentialMatchingFields = identifyMatchingFields(commonFields, fieldStats);
-  
+  // Instead of calling dbConnector, we now return the necessary parameters.
   return {
-    sourceSchema,
-    referenceSchema,
-    commonFields,
-    sourceRowCount,
-    referenceRowCount,
-    fieldStats,
-    schemaSimilarity,
-    potentialBlockingFields,
-    potentialMatchingFields
+    sourceTableId,
+    referenceTableId,
+    projectId,
+    datasetId
   };
 }
 
@@ -153,8 +81,15 @@ async function analyzeSchema(sourceTableId, referenceTableId) {
  * @param {Object} sourceSchema - The source table schema
  * @param {Object} referenceSchema - The reference table schema
  * @returns {Array} - Array of common fields
+ * @throws {TypeError} - if the schemas or fields are invalid
  */
 function findCommonFields(sourceSchema, referenceSchema) {
+    if (!sourceSchema || typeof sourceSchema !== 'object' || !Array.isArray(sourceSchema.fields)) {
+        throw new TypeError("Expected sourceSchema to be an object with a 'fields' array.");
+    }
+    if (!referenceSchema || typeof referenceSchema !== 'object' || !Array.isArray(referenceSchema.fields)) {
+        throw new TypeError("Expected referenceSchema to be an object with a 'fields' array.");
+    }
   const commonFields = [];
   const referenceFieldMap = new Map();
   
@@ -213,6 +148,7 @@ function findCommonFields(sourceSchema, referenceSchema) {
  */
 function areFieldNamesSimilar(name1, name2) {
   // Normalize names: lowercase, remove underscores, remove common prefixes/suffixes
+  // TODO: Consider using a more robust string similarity library if needed in the future.
   const normalize = (name) => {
     name = name.toLowerCase()
       .replace(/_/g, '')
@@ -299,251 +235,192 @@ function levenshteinDistance(s1, s2) {
 }
 
 /**
- * Get statistics for fields in both tables
+ * Get statistics for fields in both tables.  This function is kept, but will not be directly used
+ * in the Dataform context. It will be used for additional analysis within Dataform if needed.
  * @param {string} sourceTableId - The ID of the source table
  * @param {string} referenceTableId - The ID of the reference table
  * @param {Array} commonFields - Array of common fields
  * @returns {Promise<Object>} - Field statistics
  */
 async function getFieldStatistics(sourceTableId, referenceTableId, commonFields) {
-  // Get field statistics for source table
-  const sourceFieldStats = await dbConnector.getFieldStats(
-    sourceTableId, 
-    commonFields.map(f => ({ name: f.sourceField, type: f.type }))
-  );
-  
-  // Get field statistics for reference table
-  const referenceFieldStats = await dbConnector.getFieldStats(
-    referenceTableId,
-    commonFields.map(f => ({ name: f.referenceField, type: f.type }))
-  );
-  
-  // Combine statistics
-  const fieldStats = {
-    fields: {}
-  };
-  
-  commonFields.forEach(field => {
-    const sourceStats = sourceFieldStats[field.sourceField];
-    const referenceStats = referenceFieldStats[field.referenceField];
-    
-    fieldStats.fields[field.name] = {
-      uniqueRatio: (sourceStats.uniqueRatio + referenceStats.uniqueRatio) / 2,
-      nullRatio: (sourceStats.nullRatio + referenceStats.nullRatio) / 2,
-      avgLength: sourceStats.avgLength,
-      sourceStats,
-      referenceStats
-    };
-  });
-  
-  // Calculate overall unique field ratio
-  const uniqueRatios = Object.values(fieldStats.fields).map(stats => stats.uniqueRatio);
-  fieldStats.uniqueFieldRatio = uniqueRatios.reduce((sum, ratio) => sum + ratio, 0) / uniqueRatios.length;
-  
-  return fieldStats;
+    // Placeholder - actual implementation would depend on how we decide to get field statistics
+    // using Dataform and potentially BigQuery scripting.
+    console.log(`getFieldStatistics called with ${sourceTableId}, ${referenceTableId}, ${JSON.stringify(commonFields)}`);
+    return {};
 }
 
 /**
- * Calculate a similarity score between two schemas
- * @param {Object} sourceSchema - The source table schema
- * @param {Object} referenceSchema - The reference table schema
- * @returns {number} - Similarity score between 0 and 1
- */
+* Calculate a similarity score between two schemas. This function is kept as it is.
+* @param {Object} sourceSchema - The source table schema
+* @param {Object} referenceSchema - The reference table schema
+* @returns {number} - Similarity score between 0 and 1
+* @throws {TypeError} - if the schemas are invalid
+*/
 function calculateSchemaSimilarity(sourceSchema, referenceSchema) {
+    if (!sourceSchema || typeof sourceSchema !== 'object' || !Array.isArray(sourceSchema.fields)) {
+        throw new TypeError("Expected sourceSchema to be an object with a 'fields' array.");
+    }
+    if (!referenceSchema || typeof referenceSchema !== 'object' || !Array.isArray(referenceSchema.fields)) {
+        throw new TypeError("Expected referenceSchema to be an object with a 'fields' array.");
+    }
+  // Implementation remains the same as it's logic-based, not DB interaction.
   const sourceFieldCount = sourceSchema.fields.length;
   const referenceFieldCount = referenceSchema.fields.length;
-  
-  // Find exact name matches
+
   const sourceFieldNames = new Set(sourceSchema.fields.map(f => f.name.toLowerCase()));
   const referenceFieldNames = new Set(referenceSchema.fields.map(f => f.name.toLowerCase()));
-  
+
   let exactMatches = 0;
   sourceFieldNames.forEach(name => {
     if (referenceFieldNames.has(name)) {
       exactMatches++;
     }
   });
-  
-  // Find type matches
+
   const sourceFieldTypes = sourceSchema.fields.map(f => f.type);
   const referenceFieldTypes = referenceSchema.fields.map(f => f.type);
-  
+
   const typeDistribution = {};
-  sourceFieldTypes.forEach(type => {
-    typeDistribution[type] = (typeDistribution[type] || 0) + 1;
-  });
-  
-  let typeMatches = 0;
-  referenceFieldTypes.forEach(type => {
-    if (typeDistribution[type]) {
-      typeMatches++;
-      typeDistribution[type]--;
-    }
-  });
-  
-  // Calculate Jaccard similarity for field names
+    sourceFieldTypes.forEach(type => {
+        typeDistribution[type] = (typeDistribution[type] || 0) + 1;
+    });
+
+    let typeMatches = 0;
+    referenceFieldTypes.forEach(type => {
+        if (typeDistribution[type]) {
+            typeMatches++;
+            typeDistribution[type]--;
+        }
+    });
+
   const union = new Set([...sourceFieldNames, ...referenceFieldNames]);
-  const intersection = new Set();
-  sourceFieldNames.forEach(name => {
-    if (referenceFieldNames.has(name)) {
-      intersection.add(name);
-    }
-  });
-  
+    const intersection = new Set();
+    sourceFieldNames.forEach(name => {
+        if (referenceFieldNames.has(name)) {
+            intersection.add(name);
+        }
+    });
+
   const jaccardSimilarity = intersection.size / union.size;
-  
-  // Calculate overall similarity score
-  const exactMatchScore = exactMatches / Math.min(sourceFieldCount, referenceFieldCount);
-  const typeMatchScore = typeMatches / Math.min(sourceFieldCount, referenceFieldCount);
-  
-  return (exactMatchScore * 0.6) + (typeMatchScore * 0.2) + (jaccardSimilarity * 0.2);
+    const exactMatchScore = exactMatches / Math.min(sourceFieldCount, referenceFieldCount);
+    const typeMatchScore = typeMatches / Math.min(sourceFieldCount, referenceFieldCount);
+
+    return (exactMatchScore * 0.6) + (typeMatchScore * 0.2) + (jaccardSimilarity * 0.2);
 }
 
 /**
- * Identify fields that are good candidates for blocking
+ * Identify fields that are good candidates for blocking. This function is kept as it is.
  * @param {Array} commonFields - Array of common fields
  * @param {Object} fieldStats - Field statistics
  * @returns {Array} - Array of potential blocking fields
+ * @throws {TypeError} - if the inputs are invalid
  */
 function identifyBlockingFields(commonFields, fieldStats) {
-  const potentialBlockingFields = [];
-  
-  commonFields.forEach(field => {
-    const stats = fieldStats.fields[field.name];
-    if (!stats) return;
-    
-    // Good blocking fields have:
-    // 1. High uniqueness (but not too high)
-    // 2. Low null ratio
-    // 3. Consistent format across tables
-    const uniquenessScore = stats.uniqueRatio > 0.1 && stats.uniqueRatio < 0.8 ? 
-      1 - Math.abs(0.5 - stats.uniqueRatio) : 0;
-    
-    const nullScore = 1 - stats.nullRatio;
-    
-    // Calculate consistency between source and reference tables
-    const sourceAvgLength = stats.sourceStats.avgLength;
-    const referenceAvgLength = stats.referenceStats.avgLength;
-    const lengthConsistency = sourceAvgLength && referenceAvgLength ? 
-      1 - Math.abs(sourceAvgLength - referenceAvgLength) / Math.max(sourceAvgLength, referenceAvgLength) : 0.5;
-    
-    const blockingScore = (uniquenessScore * 0.5) + (nullScore * 0.3) + (lengthConsistency * 0.2);
-    
-    if (blockingScore > 0.6) {
-      potentialBlockingFields.push({
-        field: field.name,
-        sourceField: field.sourceField,
-        referenceField: field.referenceField,
-        score: blockingScore,
-        stats: {
-          uniquenessScore,
-          nullScore,
-          lengthConsistency
-        }
-      });
+    if (!Array.isArray(commonFields)) {
+        throw new TypeError("Expected commonFields to be an array");
     }
-  });
-  
-  // Sort by blocking score (descending)
-  return potentialBlockingFields.sort((a, b) => b.score - a.score);
+    if(typeof fieldStats !== 'object' || fieldStats === null) {
+        throw new TypeError ("Expected fieldStats to be an object")
+    }
+    // Implementation remains the same
+    const potentialBlockingFields = [];
+
+    commonFields.forEach(field => {
+        const stats = fieldStats.fields ? fieldStats.fields[field.name] : undefined; // Handle potential undefined
+        if (!stats) return;
+
+        const uniquenessScore = stats.uniqueRatio > 0.1 && stats.uniqueRatio < 0.8 ?
+            1 - Math.abs(0.5 - stats.uniqueRatio) : 0;
+        const nullScore = 1 - stats.nullRatio;
+        const lengthConsistency = (stats.sourceStats?.avgLength && stats.referenceStats?.avgLength) ?
+            1 - Math.abs(stats.sourceStats.avgLength - stats.referenceStats.avgLength) / Math.max(stats.sourceStats.avgLength, stats.referenceStats.avgLength) : 0.5;
+        const blockingScore = (uniquenessScore * 0.5) + (nullScore * 0.3) + (lengthConsistency * 0.2);
+
+        if (blockingScore > 0.6) {
+            potentialBlockingFields.push({
+                field: field.name,
+                sourceField: field.sourceField,
+                referenceField: field.referenceField,
+                score: blockingScore,
+                stats: { uniquenessScore, nullScore, lengthConsistency }
+            });
+        }
+    });
+    return potentialBlockingFields.sort((a, b) => b.score - a.score);
 }
 
 /**
- * Identify fields that are good candidates for matching
+ * Identify fields that are good candidates for matching.
  * @param {Array} commonFields - Array of common fields
  * @param {Object} fieldStats - Field statistics
  * @returns {Array} - Array of potential matching fields
- */
+ * @throws {TypeError} - if inputs are invalid
+*/
 function identifyMatchingFields(commonFields, fieldStats) {
-  const potentialMatchingFields = [];
-  
-  commonFields.forEach(field => {
-    const stats = fieldStats.fields[field.name];
-    if (!stats) return;
-    
-    // Good matching fields have:
-    // 1. High uniqueness
-    // 2. Low null ratio
-    // 3. Appropriate type for matching
-    const uniquenessScore = stats.uniqueRatio;
-    const nullScore = 1 - stats.nullRatio;
-    
-    // Determine if the field type is suitable for matching
-    const matchableTypes = ['string', 'int64', 'float64', 'date', 'timestamp'];
-    const typeScore = matchableTypes.includes(field.type) ? 1 : 0.2;
-    
-    const matchingScore = (uniquenessScore * 0.4) + (nullScore * 0.3) + (typeScore * 0.3);
-    
-    if (matchingScore > 0.5) {
-      potentialMatchingFields.push({
-        field: field.name,
-        sourceField: field.sourceField,
-        referenceField: field.referenceField,
-        type: field.type,
-        score: matchingScore,
-        stats: {
-          uniquenessScore,
-          nullScore,
-          typeScore
-        }
-      });
+    if (!Array.isArray(commonFields)) {
+        throw new TypeError("Expected commonFields to be an array");
     }
-  });
-  
-  // Sort by matching score (descending)
-  return potentialMatchingFields.sort((a, b) => b.score - a.score);
+    if (typeof fieldStats !== 'object' || fieldStats === null) {
+        throw new TypeError("Expected fieldStats to be an object");
+    }
+  // Implementation remains the same
+    const potentialMatchingFields = [];
+
+    commonFields.forEach(field => {
+        const stats = fieldStats.fields ? fieldStats.fields[field.name] : undefined; // Handle potential undefined.
+        if (!stats) return;
+
+        const uniquenessScore = stats.uniqueRatio;
+        const nullScore = 1 - stats.nullRatio;
+        const matchableTypes = ['string', 'int64', 'float64', 'date', 'timestamp'];
+        const typeScore = matchableTypes.includes(field.type) ? 1 : 0.2;
+        const matchingScore = (uniquenessScore * 0.4) + (nullScore * 0.3) + (typeScore * 0.3);
+
+        if (matchingScore > 0.5) {
+            potentialMatchingFields.push({
+                field: field.name,
+                sourceField: field.sourceField,
+                referenceField: field.referenceField,
+                type: field.type,
+                score: matchingScore,
+                stats: { uniquenessScore, nullScore, typeScore }
+            });
+        }
+    });
+    return potentialMatchingFields.sort((a, b) => b.score - a.score);
 }
 
 /**
- * Get sample data from both tables for the specified fields
- * @param {string} sourceTableId - The ID of the source table
- * @param {string} referenceTableId - The ID of the reference table
- * @param {Array} fields - Array of field objects
- * @param {number} sampleSize - Number of rows to sample
- * @returns {Promise<Object>} - Sample data from both tables
+ * Get sample data from both tables for the specified fields. Placeholder - will likely not be used directly.
+ * @param {string} sourceTableId
+ * @param {string} referenceTableId
+ * @param {Array} fields
+ * @param {number} sampleSize
  */
 async function getSampleData(sourceTableId, referenceTableId, fields, sampleSize = 100) {
-  // Get sample data from source table
-  const sourceSample = await dbConnector.getSampleData(sourceTableId, sampleSize);
-  
-  // Get sample data from reference table
-  const referenceSample = await dbConnector.getSampleData(referenceTableId, sampleSize);
-  
-  // Extract only the specified fields
-  const sourceFieldNames = fields.map(f => f.sourceField);
-  const referenceFieldNames = fields.map(f => f.referenceField);
-  
-  const filteredSourceSample = sourceSample.map(row => {
-    const filtered = {};
-    sourceFieldNames.forEach(field => {
-      filtered[field] = row[field];
-    });
-    return filtered;
-  });
-  
-  const filteredReferenceSample = referenceSample.map(row => {
-    const filtered = {};
-    referenceFieldNames.forEach(field => {
-      filtered[field] = row[field];
-    });
-    return filtered;
-  });
-  
-  return {
-    sourceSample: filteredSourceSample,
-    referenceSample: filteredReferenceSample
-  };
+    // Placeholder for now.  We might not need sample data directly in this module,
+    // as Dataform will handle the query execution.
+    console.log(`getSampleData called with ${sourceTableId}, ${referenceTableId}, ${JSON.stringify(fields)}, ${sampleSize}`);
+    return {};
 }
 
 /**
- * Analyze the distribution of values in a field
+ * Analyze the distribution of values in a field.
  * @param {Array} samples - Array of sample data
  * @param {string} fieldName - The name of the field to analyze
  * @returns {Object} - Distribution statistics
+ * @throws {TypeError} - if inputs are invalid
  */
 function analyzeValueDistribution(samples, fieldName) {
+    if(!Array.isArray(samples)){
+        throw new TypeError("Expected samples to be an array");
+    }
+    if (typeof fieldName !== 'string' || !fieldName) {
+        throw new TypeError("Expected fieldName to be a non-empty string");
+    }
+    // Implementation remains the same.
   const values = samples.map(sample => sample[fieldName]).filter(Boolean);
-  
+
   if (values.length === 0) {
     return {
       uniqueCount: 0,
@@ -552,23 +429,20 @@ function analyzeValueDistribution(samples, fieldName) {
       distribution: {}
     };
   }
-  
-  // Count occurrences of each value
+
   const valueCounts = {};
   values.forEach(value => {
     valueCounts[value] = (valueCounts[value] || 0) + 1;
   });
-  
-  // Calculate unique count and ratio
+
   const uniqueCount = Object.keys(valueCounts).length;
   const uniqueRatio = uniqueCount / values.length;
-  
-  // Find most common values
+
   const mostCommon = Object.entries(valueCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([value, count]) => ({ value, count, frequency: count / values.length }));
-  
+
   return {
     uniqueCount,
     uniqueRatio,
@@ -578,39 +452,44 @@ function analyzeValueDistribution(samples, fieldName) {
 }
 
 /**
- * Analyze the format of string values in a field
+ * Analyze the format of string values in a field.
  * @param {Array} samples - Array of sample data
  * @param {string} fieldName - The name of the field to analyze
  * @returns {Object} - Format statistics
+ * @throws {TypeError} - if inputs are invalid
  */
 function analyzeStringFormat(samples, fieldName) {
+    if(!Array.isArray(samples)){
+        throw new TypeError("Expected samples to be an array");
+    }
+    if (typeof fieldName !== 'string' || !fieldName) {
+        throw new TypeError("Expected fieldName to be a non-empty string");
+    }
+    // Implementation remains the same.
   const values = samples.map(sample => sample[fieldName])
     .filter(value => typeof value === 'string' && value.trim().length > 0);
-  
+
   if (values.length === 0) {
     return {
       avgLength: 0,
       patterns: []
     };
   }
-  
-  // Calculate average length
+
   const totalLength = values.reduce((sum, value) => sum + value.length, 0);
   const avgLength = totalLength / values.length;
-  
-  // Detect common patterns
+
   const patternCounts = {};
   values.forEach(value => {
     const pattern = detectPattern(value);
     patternCounts[pattern] = (patternCounts[pattern] || 0) + 1;
   });
-  
-  // Find most common patterns
+
   const patterns = Object.entries(patternCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
     .map(([pattern, count]) => ({ pattern, count, frequency: count / values.length }));
-  
+
   return {
     avgLength,
     patterns
@@ -618,21 +497,22 @@ function analyzeStringFormat(samples, fieldName) {
 }
 
 /**
- * Detect the pattern of a string value
+ * Detect the pattern of a string value.
  * @param {string} value - The string value
  * @returns {string} - The detected pattern
  */
 function detectPattern(value) {
+    // Implementation remains the same.
   // Replace characters with pattern symbols
   let pattern = value
     .replace(/[A-Z]/g, 'A')
     .replace(/[a-z]/g, 'a')
     .replace(/[0-9]/g, '9')
     .replace(/[^A-Za-z0-9]/g, match => match);
-  
+
   // Compress repeated patterns
   pattern = pattern.replace(/(.)\1+/g, '$1+');
-  
+
   return pattern;
 }
 

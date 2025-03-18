@@ -87,6 +87,15 @@ The mock implementations are integrated through:
 
 ## Limitations
 
-- Limited to functionality available in BigQuery SQL
-- Some complex algorithms may need to be reimplemented or approximated
-- May not produce identical results to the original libraries in all cases 
+- Limited to functionality available in BigQuery SQL. For functionalities not directly available, consider creating UDFs (User-Defined Functions) in BigQuery instead of relying on external JavaScript libraries.
+- Some complex algorithms may need to be reimplemented or approximated using BigQuery SQL.
+- Mock implementations are basic and may not cover all edge cases or functionalities of the original libraries. They are intended to provide sufficient functionality for Dataform SQL generation in this project.
+- May not produce identical results to the original libraries in all cases, especially for complex logic or edge cases.
+
+## Database Connector Mock - No Longer Used
+
+The `dbConnector` mock, which was initially used in `includes/rules/schema_analyzer.js` to simulate database interactions, is no longer used. The `schema_analyzer.js` module now leverages Dataform's native capabilities to query BigQuery directly. 
+
+The `includes/bigquery/db_connector.js` file, which was planned to house a real database connector, is therefore no longer needed and was not created.
+
+Database interactions are now handled directly within Dataform SQLX files and JavaScript code using Dataform's built-in functions and variable substitution, as documented in ADR 002 and `docs/DATAFORM_BEST_PRACTICES.md`.

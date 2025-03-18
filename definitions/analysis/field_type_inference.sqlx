@@ -2,13 +2,14 @@
 config {
   type: "table",
   description: "Infers semantic field types for a given table",
-  dependencies: ["source_customers_a"] // Replace with your actual source table if different.
+  vars: {
+    project_id: "local-dimension-296708",
+    dataset_id: "onpointdata",
+    table_id: "your_table_name"
+  }
 }
 
 // Import the field type inference module.
 const { generateInferenceSql } = require("../../includes/rules/field_type_inference");
 
-// Define the source table. This should match an actual table in your Dataform project.
-const sourceTable = "your_project.your_dataset.source_customers_a"; // TODO: Replace with your actual table.
-
-js`${generateInferenceSql(sourceTable)}`
+js`${generateInferenceSql(dataform.projectConfig.vars.project_id, dataform.projectConfig.vars.dataset_id, dataform.projectConfig.vars.table_id)}`

@@ -1,7 +1,12 @@
-// definitions/analysis/rule_recommendation.sqlx
 config {
   type: "table",
   description: "Generates rule recommendations based on schema analysis",
+    vars: {
+    project_id: "local-dimension-296708",
+    dataset_id: "onpointdata",
+    sourceTableA: "source_customers_a",
+    sourceTableB: "source_customers_b"
+  },
   dependencies: ["schema_analysis"]
 }
 
@@ -27,16 +32,12 @@ const matchingGoals = [
   }
 ];
 
-// Define source tables to analyze.  These would normally be references to actual tables.
-const sourceTableA = "your_project.your_dataset.source_customers_a"; // Replace with your table
-const sourceTableB = "your_project.your_dataset.source_customers_b"; // Replace with your table
-
 // Function to format rule recommendation as SQL
 function formatRecommendationAsSql(recommendation) {
     let rows = [];
     recommendation.recommendedRules.forEach(rule => {
         rows.push(`(
-          '${recommendation.goal.inferredType}',
+          '${recommendation.goal.name}',
           '${recommendation.goal.description}',
           '${rule.type}',
           '${rule.name}',
@@ -70,7 +71,8 @@ function formatRecommendationAsSql(recommendation) {
 }
 
 // Generate rule recommendations for each goal and format as SQL.
-js`${Promise.all(matchingGoals.map(goal => 
-  intelligentRuleSelector.recommendRules(sourceTableA, sourceTableB, goal.description, goal.config)
+js`${Promise.all(matchingGoals.map(goal =>
+  intelligentRuleSelector.recommendRules(dataform.projectConfig.vars.sourceTableA, dataform.projectConfig.vars.sourceTableB, goal.name, goal.config)
     .then(recommendation => formatRecommendationAsSql(recommendation))
+)).then(results => results.join("\\nUNION ALL\\n"))}`
 )).then(results => results.join("\\nUNION ALL\\n"))}`

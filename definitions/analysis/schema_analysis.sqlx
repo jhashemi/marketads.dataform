@@ -1,16 +1,19 @@
 // definitions/analysis/schema_analysis.sqlx
 config {
   type: "table",
-  description: "Analyzes source schemas and stores analysis results"
+  description: "Analyzes source schemas and stores analysis results",
+  vars: {
+    project_id: "local-dimension-296708",
+    dataset_id: "onpointdata",
+    sourceTableA: "source_customers_a",
+    sourceTableB: "source_customers_b"
+  }
 }
 
 // Import needed modules
 const { schemaAnalyzer } = require("../../includes/rules/schema_analyzer");
 
-// Define source tables to analyze.  These would normally be references to actual tables.
-const sourceTableA = "your_project.your_dataset.source_customers_a";
-const sourceTableB = "your_project.your_dataset.source_customers_b";
 
 // Generate analysis query.
 js`SELECT *
-FROM UNNEST(${schemaAnalyzer.generateAnalysisSql([sourceTableA, sourceTableB])})`
+FROM UNNEST(${schemaAnalyzer.generateAnalysisSql(dataform.projectConfig.vars.project_id, dataform.projectConfig.vars.dataset_id, [dataform.projectConfig.vars.sourceTableA, dataform.projectConfig.vars.sourceTableB])})`
