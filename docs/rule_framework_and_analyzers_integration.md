@@ -78,6 +78,12 @@ FROM field_type_inference
 config {
   type: "table",
   description: "Generates rule recommendations based on schema analysis",
+  vars: {
+    project_id: "local-dimension-296708",
+    dataset_id: "onpointdata",
+    sourceTableA: "source_customers_a",
+    sourceTableB: "source_customers_b"
+  },
   dependencies: ["schema_analysis"]
 }
 
@@ -273,7 +279,7 @@ config {
 }
 
 // Import field type inference module
-const { fieldTypeInference } = require("../includes/semantic_types");
+const { fieldTypeInference } = require("../includes/rules/field_type_inference");
 
 // Infer field types for a table
 const tableToAnalyze = "source_customers_a";

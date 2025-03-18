@@ -94,8 +94,8 @@ The mock implementations are integrated through:
 
 ## Database Connector Mock - No Longer Used
 
-The `dbConnector` mock, which was initially used in `includes/rules/schema_analyzer.js` to simulate database interactions, is no longer used. The `schema_analyzer.js` module now leverages Dataform's native capabilities to query BigQuery directly. 
+The `dbConnector` mock, which was initially used in `includes/rules/schema_analyzer.js` to simulate database interactions, is no longer used. The `schema_analyzer.js` module now leverages Dataform's native capabilities to query BigQuery directly, using INFORMATION_SCHEMA. 
 
 The `includes/bigquery/db_connector.js` file, which was planned to house a real database connector, is therefore no longer needed and was not created.
 
-Database interactions are now handled directly within Dataform SQLX files and JavaScript code using Dataform's built-in functions and variable substitution, as documented in ADR 002 and `docs/DATAFORM_BEST_PRACTICES.md`.
+Database interactions are now handled directly within Dataform SQLX files and JavaScript code using Dataform's built-in functions and variable substitution, as documented in ADR 002 and `docs/DATAFORM_BEST_PRACTICES.md`. The configuration for database connections is managed within the `dataform.json` file and the `config` blocks of SQLX definitions, using Dataform's native project and dataset settings.
