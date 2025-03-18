@@ -144,6 +144,28 @@ All implementation will follow the strict Test-Driven Development workflow:
 | Medium | 50,000 | 25s | ~500MB | 81.61% | 2024-03-15 |
 | Large | 500,000 | 150s | <2GB | 85% | 2024-03-15 |
 
+## Test Coverage Enhancement
+
+### Implementation Phase Status
+
+| Test Type | Implementation | Test Files | Tests Count | Status |
+|-----------|----------------|------------|-------------|--------|
+| Unit Tests | ✅ | 26 files | 95+ tests | DONE |
+| Integration Tests | ✅ | 10 files | 30+ tests | DONE |
+| Performance Tests | ✅ | 5 files | 15+ tests | DONE |
+| Functional Tests | ✅ | 1 file | 3 tests | DONE |
+| Component Tests | ✅ | 1 file | 3 tests | DONE |
+| System Tests | ✅ | 1 file | 2 tests | DONE |
+| E2E Tests | ✅ | Included in System | N/A | DONE |
+
+### Completed Test Categories
+
+- **Functional Tests**: Business requirement validation, feature completeness, and workflow validation
+- **Component Tests**: Testing individual components/subsystems with their real dependencies
+- **System Tests**: End-to-end testing of the entire system in a production-like BigQuery/Dataform environment
+- **BigQuery Environment Tests**: Tests specifically designed to validate Google BigQuery compatibility
+- **Dataform Tests**: Tests for SQLX syntax, compilation model, and execution environment
+
 ## Regular Review Schedule
 
 This document will be reviewed and updated weekly (every Friday) to reflect the current status of the project and adjust priorities as needed.
@@ -214,3 +236,10 @@ Last updated: 2024-04-10
   - ✅ Schema Type Definitions
   - ✅ Constraint Validation
   - ✅ Custom Validators
+
+## Recent Fixes
+
+- ✅ SQL Generation
+  - ✅ Fixed SQL generation for exact matching (`includes/matching/exact_matcher.js`)
+  - ✅ Ensured proper CASE WHEN syntax for all SQL comparisons
+  - ✅ Validated SQL template generation with unit tests

@@ -19,7 +19,10 @@ const configManager = require('./config_manager').defaultConfigManager;
 const TestType = {
   UNIT: 'unit',
   INTEGRATION: 'integration',
+  FUNCTIONAL: 'functional',
+  COMPONENT: 'component',
   PERFORMANCE: 'performance',
+  SYSTEM: 'system',
   E2E: 'e2e'
 };
 

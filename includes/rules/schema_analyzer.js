@@ -240,13 +240,105 @@ function levenshteinDistance(s1, s2) {
  * @param {string} sourceTableId - The ID of the source table
  * @param {string} referenceTableId - The ID of the reference table
  * @param {Array} commonFields - Array of common fields
- * @returns {Promise<Object>} - Field statistics
+ * @returns {Promise<Object>} - Field statistics.  Currently a placeholder.
  */
-async function getFieldStatistics(sourceTableId, referenceTableId, commonFields) {
-    // Placeholder - actual implementation would depend on how we decide to get field statistics
-    // using Dataform and potentially BigQuery scripting.
-    console.log(`getFieldStatistics called with ${sourceTableId}, ${referenceTableId}, ${JSON.stringify(commonFields)}`);
-    return {};
+async function getFieldStatistics(sourceTableId, referenceTableId, commonFields, projectId, datasetId) {
+  if (typeof sourceTableId !== 'string' || !sourceTableId) {
+    throw new TypeError("Expected a non-empty string for sourceTableId");
+  }
+  if (typeof referenceTableId !== 'string' || !referenceTableId) {
+      throw new TypeError("Expected a non-empty string for referenceTableId");
+  }
+    if (typeof projectId !== 'string' || !projectId) {
+        throw new TypeError("Expected a non-empty string for projectId");
+    }
+    if (typeof datasetId !== 'string' || !datasetId) {
+        throw new TypeError("Expected a non-empty string for datasetId");
+    }
+  if (!Array.isArray(commonFields)) {
+    throw new TypeError("Expected commonFields to be an array");
+  }
+
+  // Return the necessary parameters for Dataform to use.
+  return {
+    sourceTableId,
+    referenceTableId,
+    commonFields,
+    projectId,
+    datasetId
+  };
+}
+
+/**
+ * Generates SQL to retrieve field statistics for common fields between two tables.
+ * @param {string} projectId - The BigQuery project ID.
+ * @param {string} datasetId - The BigQuery dataset ID.
+ * @param {string} sourceTableId - The ID of the source table.
+ * @param {string} referenceTableId - The ID of the reference table.
+ * @param {Array} commonFields - Array of common fields objects.
+ * @returns {string} - The SQL query for retrieving field statistics.
+ * @throws {TypeError} - If input types are invalid.
+ */
+function generateFieldStatisticsSql(projectId, datasetId, sourceTableId, referenceTableId, commonFields) {
+    if (typeof projectId !== 'string' || !projectId) {
+        throw new TypeError("Expected a non-empty string for projectId");
+    }
+    if (typeof datasetId !== 'string' || !datasetId) {
+        throw new TypeError("Expected a non-empty string for datasetId");
+    }
+    if (typeof sourceTableId !== 'string' || !sourceTableId) {
+        throw new TypeError("Expected a non-empty string for sourceTableId");
+    }
+    if (typeof referenceTableId !== 'string' || !referenceTableId) {
+        throw new TypeError("Expected a non-empty string for referenceTableId");
+    }
+    if (!Array.isArray(commonFields)) {
+        throw new TypeError("Expected commonFields to be an array");
+    }
+
+    if (commonFields.length === 0) {
+        return ''; // Return empty string if no common fields
+    }
+
+    const sourceFields = commonFields.map(field => `'${field.sourceField}'`).join(',');
+    const refFields = commonFields.map(field => `'${field.referenceField}'`).join(',');
+
+    // For simplicity, we'll just get data_type for now.  More advanced stats can be added later.
+    const query = `
+WITH
+  SourceFields AS (
+  SELECT
+    column_name,
+    data_type
+  FROM
+    \`${projectId}.${datasetId}.INFORMATION_SCHEMA.COLUMNS\`
+  WHERE
+    table_name = '${sourceTableId}' AND column_name IN (${sourceFields})
+  ),
+  ReferenceFields AS (
+  SELECT
+    column_name,
+    data_type
+  FROM
+    \`${projectId}.${datasetId}.INFORMATION_SCHEMA.COLUMNS\`
+  WHERE
+    table_name = '${referenceTableId}' AND column_name IN (${refFields})
+  )
+SELECT
+  'source' as source,
+  sf.column_name,
+  sf.data_type
+FROM
+  SourceFields sf
+UNION ALL
+SELECT
+  'reference' as source,
+  rf.column_name,
+  rf.data_type
+FROM
+  ReferenceFields rf
+`;
+    return query;
 }
 
 /**

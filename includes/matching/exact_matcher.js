@@ -189,26 +189,22 @@ function generateExactMatchSql(field1, field2, options = {}) {
   
   // Handle numeric comparison with tolerance
   if (isNumeric && tolerance > 0) {
-    return `
-      CASE
-        WHEN ${expr1} IS NULL OR ${expr2} IS NULL THEN 0
-        WHEN ABS(${expr1} - ${expr2}) <= ${tolerance} THEN 1
-        ELSE 0
-      END
-    `;
+    return `CASE WHEN ${expr1} IS NULL OR ${expr2} IS NULL THEN 0
+      WHEN ABS(${expr1} - ${expr2}) <= ${tolerance} THEN 1
+      ELSE 0 END`;
   }
   
   // Regular equality with null handling
-  let sql = `
-    CASE
-      ${nullEqualsNull ? `WHEN ${expr1} IS NULL AND ${expr2} IS NULL THEN 1` : ''}
-      WHEN ${expr1} IS NULL OR ${expr2} IS NULL THEN 0
-      WHEN ${expr1} = ${expr2} THEN 1
-      ELSE 0
-    END
-  `;
+  let sql = nullEqualsNull 
+    ? `CASE WHEN ${expr1} IS NULL AND ${expr2} IS NULL THEN 1
+        WHEN ${expr1} IS NULL OR ${expr2} IS NULL THEN 0
+        WHEN ${expr1} = ${expr2} THEN 1
+        ELSE 0 END`
+    : `CASE WHEN ${expr1} IS NULL OR ${expr2} IS NULL THEN 0
+        WHEN ${expr1} = ${expr2} THEN 1
+        ELSE 0 END`;
   
-  return sql;
+  return sql.trim();
 }
 
 /**

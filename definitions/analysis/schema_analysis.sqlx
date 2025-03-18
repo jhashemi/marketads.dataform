@@ -1,6 +1,8 @@
 // definitions/analysis/schema_analysis.sqlx
 config {
   type: "table",
+config {
+  type: "table",
   description: "Analyzes source schemas and stores analysis results",
   vars: {
     project_id: "local-dimension-296708",
@@ -13,7 +15,29 @@ config {
 // Import needed modules
 const { schemaAnalyzer } = require("../../includes/rules/schema_analyzer");
 
-
 // Generate analysis query.
-js`SELECT *
-FROM UNNEST(${schemaAnalyzer.generateAnalysisSql(dataform.projectConfig.vars.project_id, dataform.projectConfig.vars.dataset_id, [dataform.projectConfig.vars.sourceTableA, dataform.projectConfig.vars.sourceTableB])})`
+js`
+WITH schema_analysis AS (
+  ${schemaAnalyzer.generateAnalysisSql(dataform.projectConfig.vars.project_id, dataform.projectConfig.vars.dataset_id, [dataform.projectConfig.vars.sourceTableA, dataform.projectConfig.vars.sourceTableB])}
+),
+),
+field_statistics AS (
+  ${schemaAnalyzer.generateFieldStatisticsSql(dataform.projectConfig.vars.project_id, dataform.projectConfig.vars.dataset_id, dataform.projectConfig.vars.sourceTableA, dataform.projectConfig.vars.sourceTableB, [])}
+)
+SELECT
+  'schema_analysis' as analysis_type,
+  sa.table_name,
+  sa.field_name,
+  sa.field_type as declared_type,
+  null as inferred_type, -- Placeholder
+  null as field_stats -- Placeholder
+FROM schema_analysis sa
+UNION ALL
+SELECT
+  'field_statistics' as analysis_type,
+  fs.source as table_name,
+  fs.column_name as field_name,
+  fs.data_type as declared_type,
+  null as inferred_type,  -- Placeholder
+  null as field_stats -- Placeholder
+FROM field_statistics fs

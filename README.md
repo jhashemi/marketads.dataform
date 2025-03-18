@@ -92,6 +92,57 @@ const report = await intelligentRuleSelector.getPerformanceReport(30); // last 3
 - **Transparent Decisions**: Provides explanations for recommended rules
 - **Performance Optimization**: Balances matching quality with execution speed
 
+## Testing
+
+The project follows a comprehensive test-driven development approach with multiple test categories:
+
+### Test Categories
+
+- **Unit Tests**: Test individual functions and components in isolation
+- **Integration Tests**: Test interactions between components
+- **Functional Tests**: Test business requirements and user-facing features
+- **Component Tests**: Test standalone subsystems with real dependencies
+- **Performance Tests**: Test system performance and scalability
+- **System Tests**: End-to-end testing in a production-like environment
+
+### Running Tests
+
+For unit and integration tests:
+```bash
+# Run unit tests
+npm run test:unit
+
+# Run integration tests
+npm run test:integration
+
+# Run all tests with coverage
+npm run test:coverage
+```
+
+For custom test runner with additional test types:
+```bash
+# Run all tests
+node scripts/run_tests.js
+
+# Run specific test types
+node scripts/run_tests.js --type [unit|integration|functional|component|system]
+
+# Run tests with specific tags
+node scripts/run_tests.js --tags matching,bigquery
+
+# Generate a test report
+node scripts/run_tests.js --report
+```
+
+### BigQuery and Dataform Compatibility
+
+The test suite includes specific tests to validate compatibility with:
+- Google BigQuery SQL syntax and functions
+- Dataform compilation and execution model
+- BigQuery resource constraints and optimization techniques
+
+For more details on the testing strategy, see [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md)
+
 ## Implementation Details
 
 The system is implemented as a set of modular JavaScript components:
@@ -103,11 +154,3 @@ The system is implemented as a set of modular JavaScript components:
 - `schema_analyzer.js`: Table structure analysis
 - `intelligent_rule_selector.js`: Main entry point
 - `rule_selection_api.js`: HTTP/CLI interface
-
-## Testing
-
-Run the test suite to verify functionality:
-
-```
-node includes/tests/rule_selector_test.js
-```

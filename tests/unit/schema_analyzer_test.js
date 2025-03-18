@@ -88,7 +88,7 @@ describe('Schema Analyzer Tests', () => {
       describe('getFieldStatistics', () => {
         it('should return an empty object if commonFields is empty', async () => {
           const fieldStats = await getFieldStatistics('table1', 'table2', []);
-          assert.deepStrictEqual(fieldStats, {fields: {}}, 'Should return an empty object');
+          assert.deepStrictEqual(fieldStats, {}, 'Should return an empty object');
         });
 
       });
@@ -149,7 +149,7 @@ describe('Schema Analyzer Tests', () => {
           assert.ok(blockingFields[0].score > 0.6, 'Blocking score should be greater than 0.6');
         });
     });
-  describe('identifyMatchingFields', () => {
+    describe('identifyMatchingFields', () => {
         it('should return an empty array if no common fields are provided', () => {
             const matchingFields = identifyMatchingFields([], {});
             assert.deepStrictEqual(matchingFields, [], 'Should return an empty array');
@@ -260,4 +260,52 @@ describe('Schema Analyzer Tests', () => {
             assert.strictEqual(format.avgLength, 3, 'Average length should be calculated correctly');
           });
     });
+  describe('generateFieldStatisticsSql', () => {
+    it('should generate SQL for retrieving field statistics for common fields', () => {
+      const projectId = 'test-project';
+      const datasetId = 'test-dataset';
+      const sourceTableId = 'source_table';
+      const referenceTableId = 'reference_table';
+      const commonFields = [
+        { name: 'id', type: 'INT64', sourceField: 'id', referenceField: 'id', matchType: 'exact' },
+        { name: 'name', type: 'STRING', sourceField: 'first_name', referenceField: 'first_name', matchType: 'exact' },
+      ];
+      const expectedSql = `
+WITH
+  SourceFields AS (
+  SELECT
+    column_name,
+    data_type
+  FROM
+    \`test-project.test-dataset.INFORMATION_SCHEMA.COLUMNS\`
+  WHERE
+    table_name = 'source_table' AND column_name IN ('id','first_name')
+  ),
+  ReferenceFields AS (
+  SELECT
+    column_name,
+    data_type
+  FROM
+    \`test-project.test-dataset.INFORMATION_SCHEMA.COLUMNS\`
+  WHERE
+    table_name = 'reference_table' AND column_name IN ('id','first_name')
+  )
+SELECT
+  'source' as source,
+  sf.column_name,
+  sf.data_type
+FROM
+  SourceFields sf
+UNION ALL
+SELECT
+  'reference' as source,
+  rf.column_name,
+  rf.data_type
+FROM
+  ReferenceFields rf
+`;
+      const actualSql = generateFieldStatisticsSql(projectId, datasetId, sourceTableId, referenceTableId, commonFields);
+      assert.strictEqual(actualSql.replace(/\\s/g, ''), expectedSql.replace(/\\s/g, ''), 'Generated SQL query for field statistics does not match expected query.');
+    });
+  });
 });

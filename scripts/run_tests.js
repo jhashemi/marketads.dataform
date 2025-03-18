@@ -224,6 +224,9 @@ function initializeFramework() {
   scanTestFiles(registry, './tests/unit');
   scanTestFiles(registry, './tests/integration');
   scanTestFiles(registry, './tests/performance');
+  scanTestFiles(registry, './tests/functional');
+  scanTestFiles(registry, './tests/component');
+  scanTestFiles(registry, './tests/system');
   
   // Explicitly mark as initialized
   registry.initialized = true;
