@@ -399,6 +399,56 @@ function dateSimilarity(field1, field2, options = {}) {
 }
 
 /**
+ * Generate SQL for calculating cosine similarity between two vectors
+ * @param {string} array1 - First array field name
+ * @param {string} array2 - Second array field name
+ * @param {Object} options - Similarity options
+ * @returns {string} SQL expression
+ */
+function cosineSimilarity(array1, array2, options = {}) {
+  const {
+    standardizeFirst = false,
+    ignoreNulls = false
+  } = options;
+  
+  // Build SQL for cosine similarity
+  return `
+    CASE
+      WHEN ${array1} IS NULL OR ${array2} IS NULL THEN NULL
+      WHEN ARRAY_LENGTH(${array1}) = 0 OR ARRAY_LENGTH(${array2}) = 0 THEN NULL
+      ELSE (
+        -- Calculate dot product
+        (
+          SELECT SUM(a * b)
+          FROM UNNEST(
+            ARRAY(SELECT element FROM UNNEST(${array1}) element WITH OFFSET pos
+                  WHERE ${ignoreNulls ? 'element IS NOT NULL' : 'TRUE'})
+          ) a WITH OFFSET pos1
+          JOIN UNNEST(
+            ARRAY(SELECT element FROM UNNEST(${array2}) element WITH OFFSET pos
+                  WHERE ${ignoreNulls ? 'element IS NOT NULL' : 'TRUE'})
+          ) b WITH OFFSET pos2
+          ON pos1 = pos2
+        ) /
+        (
+          -- Calculate magnitudes and multiply them
+          SQRT(
+            (SELECT SUM(element * element)
+             FROM UNNEST(${array1}) element
+             WHERE ${ignoreNulls ? 'element IS NOT NULL' : 'TRUE'})
+          ) *
+          SQRT(
+            (SELECT SUM(element * element)
+             FROM UNNEST(${array2}) element
+             WHERE ${ignoreNulls ? 'element IS NOT NULL' : 'TRUE'})
+          )
+        )
+      )
+    END
+  `;
+}
+
+/**
  * Generate SQL for calculating field similarity based on field type
  * @param {string} field1 - First field name
  * @param {string} field2 - Second field name
@@ -432,12 +482,24 @@ function calculateFieldSimilarity(field1, field2, fieldType, options = {}) {
       });
       
     case 'address':
+      // Use token similarity for addresses
       return tokenSimilarity(field1, field2, {
         standardizeFirst: true,
         fieldType: fieldType,
         standardizationOptions: options.standardizationOptions,
         orderSensitive: false
       });
+    case 'address_components':
+        // Use Jaccard similarity for address components (arrays of tokens)
+        return jaccardSimilarity(field1, field2);
+      
+    case 'vector':
+    case 'embedding':
+    case 'array':
+        // Use cosine similarity for numeric vectors/embeddings
+        return cosineSimilarity(field1, field2, {
+          ignoreNulls: options.ignoreNulls || false
+        });
       
     case 'city':
       return levenshteinSimilarity(field1, field2, {
@@ -480,6 +542,55 @@ function calculateFieldSimilarity(field1, field2, fieldType, options = {}) {
   }
 }
 
+/**
+ * Generate SQL for calculating Jaccard similarity between two arrays.
+ * @param {string} field1 - First field name (should be an ARRAY)
+ * @param {string} field2 - Second field name (should be an ARRAY)
+ * @param {Object} options - Similarity options
+ * @param {boolean} [options.ignoreCase=false] - Whether to ignore case when comparing
+ * @param {boolean} [options.ignoreOrder=true] - Whether to ignore order of elements
+ * @param {number} [options.minSimilarity=0.0] - Minimum similarity threshold
+ * @returns {string} SQL expression
+ */
+function jaccardSimilarity(field1, field2, options = {}) {
+  const {
+    ignoreCase = false,
+    ignoreOrder = true,
+    minSimilarity = 0.0
+  } = options;
+  
+  // Handle case sensitivity
+  let f1 = field1;
+  let f2 = field2;
+  
+  if (ignoreCase) {
+    // Apply case normalization to array elements
+    f1 = `ARRAY(SELECT UPPER(element) FROM UNNEST(${field1}) AS element)`;
+    f2 = `ARRAY(SELECT UPPER(element) FROM UNNEST(${field2}) AS element)`;
+  }
+  
+  return `
+    CASE
+      -- Handle NULL values
+      WHEN ${f1} IS NULL OR ${f2} IS NULL THEN 0.0
+      -- Handle empty arrays
+      WHEN ARRAY_LENGTH(${f1}) = 0 AND ARRAY_LENGTH(${f2}) = 0 THEN 1.0
+      WHEN ARRAY_LENGTH(${f1}) = 0 OR ARRAY_LENGTH(${f2}) = 0 THEN 0.0
+      ELSE
+        -- Calculate Jaccard similarity: |intersection| / |union|
+        COALESCE(
+          CAST(ARRAY_LENGTH(ARRAY_INTERSECT(${f1}, ${f2})) AS FLOAT64) /
+          NULLIF(CAST(ARRAY_LENGTH(ARRAY_UNION(${f1}, ${f2})) AS FLOAT64), 0),
+          0.0
+        )
+    END
+    ${minSimilarity > 0 ? `* CASE WHEN (
+      CAST(ARRAY_LENGTH(ARRAY_INTERSECT(${f1}, ${f2})) AS FLOAT64) /
+      NULLIF(CAST(ARRAY_LENGTH(ARRAY_UNION(${f1}, ${f2})) AS FLOAT64), 0)
+    ) >= ${minSimilarity} THEN 1 ELSE 0 END` : ''}
+  `;
+}
+
 module.exports = {
   exactMatchSimilarity,
   levenshteinSimilarity,
@@ -488,5 +599,7 @@ module.exports = {
   tokenSimilarity,
   numericSimilarity,
   dateSimilarity,
-  calculateFieldSimilarity
+  calculateFieldSimilarity,
+  jaccardSimilarity,
+  cosineSimilarity
 };

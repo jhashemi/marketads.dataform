@@ -199,59 +199,76 @@ function generateBlockingKeySql(tableName, fieldMappings, blockingConfig) {
  * @param {string} semanticType - Semantic type
  * @returns {string} SQL expression
  * @throws {StrategyError} If strategy SQL generation fails
- */
-function generateStrategySQL(strategyName, tableName, fieldName, semanticType) {
-  const fullFieldName = `${tableName}.${fieldName}`;
-  
-  switch (strategyName) {
-    case 'exact':
-      // Use standardization UDFs based on semantic type
-      if (semanticType === 'name') {
-        return `\${ref("core.text_udfs")}.standardize_name(${fullFieldName})`;
-      } else if (semanticType === 'address') {
-        return `\${ref("core.text_udfs")}.standardize_address(${fullFieldName})`;
-      } else if (semanticType === 'phone') {
-        return `\${ref("core.text_udfs")}.standardize_phone(${fullFieldName})`;
-      } else if (semanticType === 'email') {
-        return `\${ref("core.text_udfs")}.standardize_email(${fullFieldName})`;
-      } else {
-        return `LOWER(TRIM(${fullFieldName}))`;
-      }
-    
-    case 'prefix':
-      return `SUBSTRING(LOWER(TRIM(${fullFieldName})), 1, 3)`;
-    
-    case 'suffix':
-      return `SUBSTRING(LOWER(TRIM(${fullFieldName})), -3)`;
-    
-    case 'soundex':
-      return `SOUNDEX(${fullFieldName})`;
-    
-    case 'name_soundex':
-      return `\${ref("core.text_udfs")}.name_blocking_key(${fullFieldName}, ${tableName}.last_name)`;
-    
-    case 'year':
-      return `EXTRACT(YEAR FROM ${fullFieldName})`;
-    
-    case 'month':
-      return `EXTRACT(MONTH FROM ${fullFieldName})`;
-    
-    case 'day':
-      return `EXTRACT(DAY FROM ${fullFieldName})`;
-    
-    case 'emailDomain':
-      return `\${ref("core.text_udfs")}.email_domain(${fullFieldName})`;
-    
-    case 'lastFourDigits':
-      return `\${ref("core.text_udfs")}.last_four_digits(${fullFieldName})`;
-    
-    case 'token':
-      // Token-based blocking requires multiple keys, not a single SQL expression
-      return null;
-    
-    default:
-      throw new StrategyError(`No SQL generation logic for strategy: ${strategyName}`, strategyName);
-  }
+ function generateStrategySQL(strategyName, tableName, fieldName, semanticType) {
+   const fullFieldName = `${tableName}.${fieldName}`;
+   
+   switch (strategyName) {
+     case 'exact':
+       // Use standardization UDFs based on semantic type
+       if (semanticType === 'name') {
+         return `\${ref("core.text_udfs")}.standardize_name(${fullFieldName})`;
+       } else if (semanticType === 'address') {
+         return `\${ref("core.text_udfs")}.standardize_address(${fullFieldName})`;
+       } else if (semanticType === 'phone') {
+         return `\${ref("core.text_udfs")}.standardize_phone(${fullFieldName})`;
+       } else if (semanticType === 'email') {
+         return `\${ref("core.text_udfs")}.standardize_email(${fullFieldName})`;
+       } else {
+         return `LOWER(TRIM(${fullFieldName}))`;
+       }
+     
+     case 'prefix':
+       return `SUBSTRING(LOWER(TRIM(${fullFieldName})), 1, 3)`;
+     
+     case 'suffix':
+       return `SUBSTRING(LOWER(TRIM(${fullFieldName})), -3)`;
+     
+     case 'soundex':
+       return `SOUNDEX(${fullFieldName})`;
+     
+     case 'name_soundex':
+       return `\${ref("core.text_udfs")}.name_blocking_key(${fullFieldName}, ${tableName}.last_name)`;
+     
+     case 'year':
+       return `EXTRACT(YEAR FROM ${fullFieldName})`;
+     
+     case 'month':
+       return `EXTRACT(MONTH FROM ${fullFieldName})`;
+     
+     case 'day':
+       return `EXTRACT(DAY FROM ${fullFieldName})`;
+     
+     case 'emailDomain':
+       return `\${ref("core.text_udfs")}.email_domain(${fullFieldName})`;
+     
+     case 'lastFourDigits':
+       return `\${ref("core.text_udfs")}.last_four_digits(${fullFieldName})`;
+     
+     case 'token':
+       // Token-based blocking requires multiple keys, not a single SQL expression
+       return null;
+       
+     case 'embedding':
+       // Locality-sensitive hashing (LSH) for embeddings
+       return `\${ref("core.vector_udfs")}.lsh_blocking_key(${fullFieldName})`;
+     
+     case 'ngram':
+       // N-gram blocking - generates multiple keys, typically used with array_agg
+       return `\${ref("core.text_udfs")}.generate_ngrams(${fullFieldName}, 3)`;
+     
+     case 'compound':
+       // Compound blocking typically requires multiple keys as input
+       // This is a placeholder - in practice, this would be customized per use case
+       return `CONCAT(
+         LOWER(TRIM(${fullFieldName})),
+         '_',
+         SOUNDEX(${fullFieldName})
+       )`;
+     
+     default:
+       throw new StrategyError(`No SQL generation logic for strategy: ${strategyName}`, strategyName);
+   }
+ }
 }
 
 /**

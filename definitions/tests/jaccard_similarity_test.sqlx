@@ -1,0 +1,158 @@
+config {
+  type: "test",
+  tags: ["matcher", "similarity", "jaccard", "unit_test"],
+  description: "Tests the Jaccard similarity implementation for array and string comparisons"
+}
+
+-- Create test UDFs for Jaccard similarity
+CREATE TEMP FUNCTION JACCARD_SIMILARITY(arr1 ARRAY<STRING>, arr2 ARRAY<STRING>)
+RETURNS FLOAT64
+AS (
+  SAFE_DIVIDE(
+    ARRAY_LENGTH(ARRAY_INTERSECT(arr1, arr2)),
+    ARRAY_LENGTH(ARRAY_UNION(arr1, arr2))
+  )
+);
+
+CREATE TEMP FUNCTION WEIGHTED_JACCARD_SIMILARITY(
+  arr1 ARRAY<STRING>, 
+  arr2 ARRAY<STRING>, 
+  weights ARRAY<STRUCT<token STRING, weight FLOAT64>>
+)
+RETURNS FLOAT64
+AS (
+  (
+    SELECT
+      IFNULL(SUM(weight_map.weight), 0) / 
+      NULLIF((SELECT SUM(weight_map.weight) FROM UNNEST(ARRAY_UNION(arr1, arr2)) AS token
+             LEFT JOIN UNNEST(weights) AS weight_map ON token = weight_map.token), 0)
+    FROM
+      UNNEST(ARRAY_INTERSECT(arr1, arr2)) AS token
+      LEFT JOIN UNNEST(weights) AS weight_map ON token = weight_map.token
+  )
+);
+
+-- Create test data
+WITH test_cases AS (
+  SELECT 1 AS case_id, ['apple', 'banana', 'orange'] AS set1, ['banana', 'orange', 'grape'] AS set2
+  UNION ALL SELECT 2, [] AS set1, [] AS set2
+  UNION ALL SELECT 3, ['apple'] AS set1, [] AS set2
+  UNION ALL SELECT 4, ['apple', 'banana', 'orange'] AS set1, ['apple', 'banana', 'orange'] AS set2
+  UNION ALL SELECT 5, ['apple', 'banana', 'orange'] AS set1, ['grape', 'kiwi', 'mango'] AS set2
+),
+
+expected_results AS (
+  SELECT 
+    1 AS case_id, 
+    0.5 AS expected_jaccard,  -- Intersection: 2, Union: 4, Jaccard: 2/4 = 0.5
+    'Partial match' AS description
+  UNION ALL 
+  SELECT 
+    2, 
+    1.0,                      -- Empty sets convention: 1.0 similarity
+    'Empty sets' 
+  UNION ALL 
+  SELECT 
+    3, 
+    0.0,                      -- No overlap
+    'One empty set'
+  UNION ALL 
+  SELECT 
+    4, 
+    1.0,                      -- Perfect match
+    'Identical sets'
+  UNION ALL 
+  SELECT 
+    5, 
+    0.0,                      -- No overlap
+    'Completely different sets'
+),
+
+-- Test weighted Jaccard similarity
+weighted_test_cases AS (
+  SELECT 
+    1 AS case_id, 
+    ['apple', 'banana', 'orange'] AS set1, 
+    ['banana', 'orange', 'grape'] AS set2,
+    [
+      STRUCT('apple' AS token, 0.5 AS weight),
+      STRUCT('banana' AS token, 2.0 AS weight),
+      STRUCT('orange' AS token, 1.0 AS weight),
+      STRUCT('grape' AS token, 0.5 AS weight)
+    ] AS weights
+),
+
+expected_weighted_results AS (
+  SELECT 
+    1 AS case_id, 
+    0.75 AS expected_jaccard,  -- Weighted Intersection: 3.0, Weighted Union: 4.0, Weighted Jaccard: 3.0/4.0 = 0.75
+    'Weighted partial match' AS description
+)
+
+-- Run tests for standard Jaccard similarity
+SELECT
+  t.case_id,
+  ARRAY_TO_STRING(t.set1, ', ') AS set1,
+  ARRAY_TO_STRING(t.set2, ', ') AS set2,
+  JACCARD_SIMILARITY(t.set1, t.set2) AS actual_jaccard,
+  e.expected_jaccard,
+  ABS(JACCARD_SIMILARITY(t.set1, t.set2) - e.expected_jaccard) < 0.001 AS test_passed,
+  e.description
+FROM 
+  test_cases t
+JOIN 
+  expected_results e ON t.case_id = e.case_id
+
+UNION ALL
+
+-- Run tests for weighted Jaccard similarity
+SELECT
+  w.case_id + 100 AS case_id,  -- Add 100 to differentiate from standard tests
+  ARRAY_TO_STRING(w.set1, ', ') AS set1,
+  ARRAY_TO_STRING(w.set2, ', ') AS set2,
+  WEIGHTED_JACCARD_SIMILARITY(w.set1, w.set2, w.weights) AS actual_jaccard,
+  e.expected_jaccard,
+  ABS(WEIGHTED_JACCARD_SIMILARITY(w.set1, w.set2, w.weights) - e.expected_jaccard) < 0.001 AS test_passed,
+  e.description
+FROM 
+  weighted_test_cases w
+JOIN 
+  expected_weighted_results e ON w.case_id = e.case_id
+
+UNION ALL
+
+-- Test string tokenization
+SELECT
+  201 AS case_id,
+  'apple banana orange' AS set1,
+  'banana orange grape' AS set2,
+  JACCARD_SIMILARITY(
+    SPLIT('apple banana orange', ' '), 
+    SPLIT('banana orange grape', ' ')
+  ) AS actual_jaccard,
+  0.5 AS expected_jaccard,
+  ABS(JACCARD_SIMILARITY(
+    SPLIT('apple banana orange', ' '), 
+    SPLIT('banana orange grape', ' ')
+  ) - 0.5) < 0.001 AS test_passed,
+  'Tokenized strings' AS description
+
+UNION ALL
+
+-- Test for custom delimiters
+SELECT
+  202 AS case_id,
+  'apple,banana,orange' AS set1,
+  'banana,orange,grape' AS set2,
+  JACCARD_SIMILARITY(
+    SPLIT('apple,banana,orange', ','), 
+    SPLIT('banana,orange,grape', ',')
+  ) AS actual_jaccard,
+  0.5 AS expected_jaccard,
+  ABS(JACCARD_SIMILARITY(
+    SPLIT('apple,banana,orange', ','), 
+    SPLIT('banana,orange,grape', ',')
+  ) - 0.5) < 0.001 AS test_passed,
+  'Custom delimiter tokenization' AS description
+
+ORDER BY case_id;

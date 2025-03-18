@@ -413,6 +413,224 @@ function standardizedAddressBlockingKey(value) {
 }
 
 /**
+ * Generates blocking keys based on locality-sensitive hashing of embeddings
+ * @param {Array<number>} embedding - Vector embedding
+ * @param {Object} options - LSH options
+ * @param {number} [options.numBuckets=10] - Number of hash buckets
+ * @param {number} [options.numPlanes=3] - Number of random planes for LSH
+ * @param {string} [options.seed='default'] - Seed for random plane generation
+ * @returns {Array<string>|null} Array of LSH blocking keys or null if invalid
+ */
+function embeddingLshBlockingKeys(embedding, options = {}) {
+  if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+    return null;
+  }
+  
+  const { 
+    numBuckets = 10, 
+    numPlanes = 3,
+    seed = 'default'
+  } = options;
+  
+  // Generate a deterministic hash from the seed
+  const hashSeed = (seed) => {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return hash;
+  };
+  
+  // Create blocking keys using locality-sensitive hashing
+  const keys = [];
+  
+  for (let i = 0; i < numPlanes; i++) {
+    // Create a deterministic random vector from the seed
+    const randomVector = [];
+    const planeSeed = hashSeed(`${seed}_plane_${i}`);
+    
+    for (let j = 0; j < embedding.length; j++) {
+      // Use deterministic random value based on seed and position
+      const randomValue = Math.sin(planeSeed * (j + 1)) * 2 - 1;
+      randomVector.push(randomValue);
+    }
+    
+    // Calculate dot product between embedding and random vector
+    let dotProduct = 0;
+    for (let j = 0; j < embedding.length; j++) {
+      dotProduct += embedding[j] * randomVector[j];
+    }
+    
+    // Get hash bucket based on dot product sign and bucketing
+    const normalizedDot = (Math.atan2(dotProduct, 1) / Math.PI + 0.5) * numBuckets;
+    const bucketId = Math.floor(normalizedDot) % numBuckets;
+    
+    // Create key with plane number to avoid collisions between planes
+    keys.push(`lsh_${i}_${bucketId}`);
+  }
+  
+  return keys;
+}
+
+/**
+ * Generates n-gram based blocking keys
+ * @param {string} value - Input string
+ * @param {Object} options - Options
+ * @param {number} [options.n=3] - Size of n-grams
+ * @param {number} [options.maxGrams=5] - Maximum number of n-grams to use
+ * @returns {Array<string>|null} Array of n-gram blocking keys or null if invalid
+ */
+function ngramBlockingKeys(value, options = {}) {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+  
+  const { n = 3, maxGrams = 5 } = options;
+  
+  // Normalize the string
+  value = value.trim().toLowerCase();
+  
+  // If string is shorter than n, return the whole string
+  if (value.length < n) {
+    return [value];
+  }
+  
+  // Generate n-grams
+  const ngrams = [];
+  for (let i = 0; i <= value.length - n; i++) {
+    ngrams.push(value.slice(i, i + n));
+  }
+  
+  // Limit the number of n-grams
+  return ngrams.slice(0, maxGrams);
+}
+
+/**
+ * Generates compound blocking keys by combining multiple strategies
+ * @param {string} value - Input value
+ * @param {Object} options - Options
+ * @param {Array<string>} [options.strategies=['exact', 'prefix']] - Strategies to combine
+ * @param {Object} [options.strategyOptions={}] - Options for each strategy
+ * @param {string} [options.separator='_'] - Separator between strategy keys
+ * @returns {Array<string>|null} Array of compound blocking keys or null if invalid
+ */
+function compoundBlockingKeys(value, options = {}) {
+  if (!value) {
+    return null;
+  }
+  
+  const {
+    strategies = ['exact', 'prefix'],
+    strategyOptions = {},
+    separator = '_'
+  } = options;
+  
+  if (!strategies || !Array.isArray(strategies) || strategies.length === 0) {
+    return null;
+  }
+  
+  // Apply each strategy and collect results
+  const strategyResults = [];
+  
+  for (const strategy of strategies) {
+    let result;
+    const strategyOpts = strategyOptions[strategy] || {};
+    
+    try {
+      // Call the appropriate blocking function
+      switch (strategy) {
+        case 'exact':
+          result = exactBlockingKey(value);
+          break;
+        case 'prefix':
+          result = prefixBlockingKey(value, strategyOpts.prefixLength);
+          break;
+        case 'suffix':
+          result = suffixBlockingKey(value, strategyOpts.suffixLength);
+          break;
+        case 'soundex':
+          result = soundexBlockingKey(value);
+          break;
+        case 'token':
+          // Take the first token only for compound keys
+          const tokens = tokenBlockingKeys(value, strategyOpts);
+          result = tokens && tokens.length > 0 ? tokens[0] : null;
+          break;
+        case 'emailDomain':
+          result = emailDomainBlockingKey(value);
+          break;
+        default:
+          // Try to get the strategy function and call it
+          const strategyFn = BLOCKING_STRATEGIES[strategy];
+          if (strategyFn && typeof strategyFn === 'function') {
+            result = strategyFn(value, strategyOpts);
+            // Handle array results by taking first item
+            if (Array.isArray(result) && result.length > 0) {
+              result = result[0];
+            }
+          }
+      }
+      
+      if (result) {
+        strategyResults.push(result);
+      }
+    } catch (error) {
+      console.warn(`Error applying compound strategy ${strategy}:`, error);
+    }
+  }
+  
+  // If no strategies produced results, return null
+  if (strategyResults.length === 0) {
+    return null;
+  }
+  
+  // Combine all strategy results into a single compound key
+  return [strategyResults.join(separator)];
+}
+
+/**
+ * Generates tag-based blocking keys from an array of tags
+ * @param {Array<string>} tags - Array of tag values
+ * @param {Object} options - Options for tag blocking
+ * @param {boolean} [options.lowercase=false] - Whether to convert tags to lowercase
+ * @param {string} [options.prefix=''] - Prefix to add to each tag
+ * @param {number} [options.maxTags=0] - Maximum number of tags to use (0 = unlimited)
+ * @returns {Array<string>} Array of blocking keys
+ */
+function tagBlockingKeys(tags, options = {}) {
+  if (!tags || !Array.isArray(tags)) {
+    return [];
+  }
+  
+  const {
+    lowercase = false,
+    prefix = '',
+    maxTags = 0
+  } = options;
+  
+  // Process the tags
+  let processedTags = [...tags];
+  
+  // Apply lowercase if requested
+  if (lowercase) {
+    processedTags = processedTags.map(tag => String(tag).toLowerCase());
+  }
+  
+  // Apply prefix if provided
+  if (prefix) {
+    processedTags = processedTags.map(tag => `${prefix}${tag}`);
+  }
+  
+  // Limit number of tags if maxTags is specified
+  if (maxTags > 0 && processedTags.length > maxTags) {
+    processedTags = processedTags.slice(0, maxTags);
+  }
+  
+  return processedTags;
+}
+
+/**
  * Map of supported blocking strategies to their implementation functions
  */
 const BLOCKING_STRATEGIES = {
@@ -427,7 +645,11 @@ const BLOCKING_STRATEGIES = {
   emailDomain: emailDomainBlockingKey,
   lastFourDigits: lastFourDigitsBlockingKey,
   phonetic: phoneticBlockingKeys,
-  standardizedAddress: standardizedAddressBlockingKey
+  standardizedAddress: standardizedAddressBlockingKey,
+  embedding: embeddingLshBlockingKeys,
+  ngram: ngramBlockingKeys,
+  compound: compoundBlockingKeys,
+  tag: tagBlockingKeys
 };
 
 /**
@@ -491,5 +713,9 @@ module.exports = {
   emailDomainBlockingKey,
   lastFourDigitsBlockingKey,
   phoneticBlockingKeys,
-  standardizedAddressBlockingKey
-}; 
+  standardizedAddressBlockingKey,
+  embeddingLshBlockingKeys,
+  ngramBlockingKeys,
+  compoundBlockingKeys,
+  tagBlockingKeys
+};

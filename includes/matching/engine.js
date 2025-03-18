@@ -58,6 +58,12 @@ function calculateSimilarity(value1, value2, semanticType) {
     return 0;
   }
   
+  // Special handling for array types (e.g., address_components)
+  if (semanticType === 'address_components' && Array.isArray(value1) && Array.isArray(value2)) {
+    // Use Jaccard similarity for arrays
+    return calculateJaccardSimilarity(value1, value2);
+  }
+  
   // Convert to strings for comparison
   const str1 = String(value1).trim().toLowerCase();
   const str2 = String(value2).trim().toLowerCase();
@@ -101,8 +107,9 @@ function calculateSimilarity(value1, value2, semanticType) {
     case 'firstName':
     case 'lastName':
     case 'middleName':
-      // For names, use Levenshtein distance
-      return calculateLevenshteinSimilarity(str1, str2);
+    case 'name':
+      // For names, use Jaro-Winkler for better name matching
+      return jaroWinkler(str1, str2);
       
     case 'address':
       // For addresses, check for token overlap
@@ -144,6 +151,41 @@ function calculateSimilarity(value1, value2, semanticType) {
       // Default string similarity for other types
       return calculateLevenshteinSimilarity(str1, str2);
   }
+}
+
+/**
+ * Calculates Jaccard similarity between two arrays
+ * @param {Array} arr1 - First array
+ * @param {Array} arr2 - Second array
+ * @returns {number} Similarity score between 0 and 1
+ */
+function calculateJaccardSimilarity(arr1, arr2) {
+  if (!Array.isArray(arr1) || !Array.isArray(arr2)) {
+    return 0;
+  }
+  
+  // If both arrays are empty, they're identical
+  if (arr1.length === 0 && arr2.length === 0) {
+    return 1.0;
+  }
+  
+  // Create sets for efficient intersection/union
+  const set1 = new Set(arr1.map(item => String(item).toLowerCase()));
+  const set2 = new Set(arr2.map(item => String(item).toLowerCase()));
+  
+  // Calculate intersection
+  const intersection = new Set();
+  for (const item of set1) {
+    if (set2.has(item)) {
+      intersection.add(item);
+    }
+  }
+  
+  // Calculate union
+  const union = new Set([...set1, ...set2]);
+  
+  // Jaccard similarity = size of intersection / size of union
+  return intersection.size / union.size;
 }
 
 /**
@@ -418,6 +460,14 @@ class MatchEngine {
       });
     }
     
+    // Address components strategy (for array-based address components)
+    if (sharedTypes.includes('address_components')) {
+      strategies.push({
+        name: 'address_components',
+        requiredFields: ['address_components']
+      });
+    }
+    
     // Multi-field strategy
     if (strategies.length === 0 && sharedTypes.length >= 2) {
       strategies.push({
@@ -441,5 +491,6 @@ module.exports = {
   MatchEngine,
   calculateSimilarity,
   calculateLevenshteinSimilarity,
-  calculateTokenOverlapSimilarity
-}; 
+  calculateTokenOverlapSimilarity,
+  calculateJaccardSimilarity
+};

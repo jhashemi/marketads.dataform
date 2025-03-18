@@ -1,0 +1,72 @@
+config {
+  type: "test",
+  name: "cosine_similarity_test",
+  dataset: "tests",
+  tags: ["unit", "matching", "cosine"]
+}
+
+-- Test cases for cosineSimilarity function
+
+-- Test case 1: Identical vectors
+ASSERT (
+  (SELECT includes.matching.cosineSimilarity([1.0, 2.0, 3.0], [1.0, 2.0, 3.0])) = 1.0
+) AS test_identical_vectors;
+
+-- Test case 2: Orthogonal vectors (perpendicular, cosine = 0)
+ASSERT (
+  ABS((SELECT includes.matching.cosineSimilarity([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])) - 0.0) < 0.001
+) AS test_orthogonal_vectors;
+
+-- Test case 3: Similar vectors (not identical but related)
+ASSERT (
+  ABS((SELECT includes.matching.cosineSimilarity([1.0, 2.0, 3.0], [2.0, 3.0, 4.0])) - 0.9925) < 0.001
+) AS test_similar_vectors;
+
+-- Test case 4: Opposite vectors (facing opposite directions, cosine = -1)
+ASSERT (
+  ABS((SELECT includes.matching.cosineSimilarity([1.0, 2.0, 3.0], [-1.0, -2.0, -3.0])) - (-1.0)) < 0.001
+) AS test_opposite_vectors;
+
+-- Test case 5: Empty vectors
+ASSERT (
+  (SELECT includes.matching.cosineSimilarity([], [])) IS NULL
+) AS test_empty_vectors;
+
+-- Test case 6: One empty vector
+ASSERT (
+  (SELECT includes.matching.cosineSimilarity([1.0, 2.0, 3.0], [])) IS NULL
+) AS test_one_empty_vector;
+
+-- Test case 7: Null inputs
+ASSERT (
+  (SELECT includes.matching.cosineSimilarity(NULL, [1.0, 2.0, 3.0])) IS NULL
+) AS test_null_input_1;
+
+ASSERT (
+  (SELECT includes.matching.cosineSimilarity([1.0, 2.0, 3.0], NULL)) IS NULL
+) AS test_null_input_2;
+
+-- Test case 8: Different length vectors
+ASSERT (
+  ABS((SELECT includes.matching.cosineSimilarity([1.0, 2.0, 3.0], [1.0, 2.0])) - 0.9487) < 0.001
+) AS test_different_length_vectors;
+
+-- Test case 9: Sparse vectors (with many zeros)
+ASSERT (
+  ABS((SELECT includes.matching.cosineSimilarity([1.0, 0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0, 2.0])) - 0.4472) < 0.001
+) AS test_sparse_vectors;
+
+-- Test case 10: Single element vectors
+ASSERT (
+  (SELECT includes.matching.cosineSimilarity([5.0], [10.0])) = 1.0
+) AS test_single_element_vectors;
+
+-- Test case 11: Vectors with NULL elements
+ASSERT (
+  (SELECT includes.matching.cosineSimilarity([1.0, NULL, 3.0], [1.0, 2.0, 3.0])) IS NULL
+) AS test_vectors_with_null_elements;
+
+-- Test case 12: Vectors with string elements (should not work properly)
+ASSERT (
+  (SELECT includes.matching.cosineSimilarity(['a', 'b', 'c'], ['a', 'b', 'c'])) IS NULL
+) AS test_vectors_with_string_elements;
